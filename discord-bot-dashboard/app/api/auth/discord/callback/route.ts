@@ -1,5 +1,7 @@
 import { NextResponse } from "next/server";
 
+import { publicAbsoluteUrl } from "@/lib/resolvePublicOrigin";
+
 type DiscordTokenResponse = {
   access_token: string;
   token_type: string;
@@ -23,7 +25,9 @@ export async function GET(request: Request) {
   const redirectUri = process.env.DISCORD_REDIRECT_URI;
 
   if (!code) {
-    return NextResponse.redirect(new URL("/?auth=missing_code", request.url));
+    return NextResponse.redirect(
+      publicAbsoluteUrl("/?auth=missing_code", request)
+    );
   }
 
   if (!clientId || !clientSecret || !redirectUri) {
@@ -73,7 +77,7 @@ export async function GET(request: Request) {
 
   const user = (await userRes.json()) as DiscordUser;
 
-  const response = NextResponse.redirect(new URL("/servers", request.url));
+  const response = NextResponse.redirect(publicAbsoluteUrl("/servers", request));
 
   response.cookies.set("discord_access_token", tokenData.access_token, {
     httpOnly: true,
