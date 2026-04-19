@@ -5,7 +5,7 @@
 - [ ] Установить зависимости: `npm install` в `discord-bot/` и в `discord-bot-dashboard/`.
 - [ ] Задать переменные окружения по `.env.example` в каждом пакете (см. комментарии в файлах).
 - [ ] В Discord Developer Portal настроить redirect URL для OAuth, совпадающий с `DISCORD_REDIRECT_URI` (включая путь `/api/auth/discord/callback`).
-- [ ] Настроить invite-ссылку бота с нужными scopes и permissions (см. документацию Discord для вашего сценария: участники, сообщения, вложения и т.д.).
+- [ ] Настроить invite-ссылку бота с нужными scopes и permissions (см. документацию Discord для нашего сценария: участники, сообщения, вложения и т.д.).
 
 ## Общие данные (shared-data)
 

@@ -1,9 +1,10 @@
-const fs = require("fs/promises");
 const { existsSync } = require("fs");
 const path = require("path");
 const { EmbedBuilder, AttachmentBuilder } = require("discord.js");
 const { generateWelcomeImageCardPngBuffer } = require("./welcomeImageCard");
 const { resolveSharedDataDir } = require("./resolveSharedDataDir");
+const configStore = require("./persistence/configStore");
+const { configFilePath } = require("./persistence/jsonConfigStore");
 
 const IMAGE_CARD_FONT_KEYS = new Set([
   "inter",
@@ -43,8 +44,6 @@ function resolveImageCardBackgroundPath(sharedRoot, bi) {
 
 /** @typedef {{ guilds?: Record<string, unknown> }} SharedConfigShape */
 
-// Repo layout: timbra.tv/shared-data/config.json next to timbra.tv/discord-bot/
-const CONFIG_PATH = path.join(__dirname, "..", "..", "shared-data", "config.json");
 const SNOWFLAKE_RE = /^\d{17,20}$/;
 
 /**
@@ -53,48 +52,6 @@ const SNOWFLAKE_RE = /^\d{17,20}$/;
  */
 function isNonEmptySnowflake(id) {
   return typeof id === "string" && SNOWFLAKE_RE.test(id.trim());
-}
-
-/**
- * @returns {Promise<SharedConfigShape | null>}
- */
-async function readSharedConfig() {
-  try {
-    const raw = await fs.readFile(CONFIG_PATH, "utf8");
-    /** @type {unknown} */
-    const data = JSON.parse(raw);
-    if (
-      !data ||
-      typeof data !== "object" ||
-      !("guilds" in data) ||
-      typeof data.guilds !== "object" ||
-      data.guilds === null
-    ) {
-      console.warn("[config] invalid shape: expected top-level object with guilds");
-      return null;
-    }
-    return /** @type {SharedConfigShape} */ (data);
-  } catch (err) {
-    const e = /** @type {NodeJS.ErrnoException} */ (err);
-    if (e.code === "ENOENT") {
-      console.warn("[config] file missing:", CONFIG_PATH);
-      return null;
-    }
-    console.warn("[config] read or parse failed:", e.message);
-    return null;
-  }
-}
-
-/**
- * @param {SharedConfigShape | null} shared
- * @param {string} guildId
- * @returns {Record<string, unknown> | null}
- */
-function getGuildConfig(shared, guildId) {
-  if (!shared || !guildId || typeof guildId !== "string") return null;
-  const g = shared.guilds?.[guildId];
-  if (!g || typeof g !== "object" || Array.isArray(g)) return null;
-  return /** @type {Record<string, unknown>} */ (g);
 }
 
 /**
@@ -602,13 +559,13 @@ async function handleGuildMemberAdd(member) {
     const guildId = member.guild.id;
     console.log(`[member] joined: ${member.user.tag} (guild ${guildId})`);
 
-    const shared = await readSharedConfig();
+    const shared = await configStore.readRawConfig();
     if (!shared) {
       console.log("[member] no valid shared config; skipping guild handlers");
       return;
     }
 
-    const config = getGuildConfig(shared, guildId);
+    const config = configStore.getGuildConfig(shared, guildId);
     if (!config) {
       console.log(`[member] no config entry for guild ${guildId}; skipping`);
       return;
@@ -632,12 +589,14 @@ async function handleGuildMemberAdd(member) {
 }
 
 module.exports = {
-  readSharedConfig,
-  getGuildConfig,
+  readSharedConfig: configStore.readRawConfig,
+  getGuildConfig: configStore.getGuildConfig,
   resolveTemplate,
   hexToDiscordColor,
   assignAutoRole,
   sendWelcome,
   handleGuildMemberAdd,
-  CONFIG_PATH,
+  get CONFIG_PATH() {
+    return configFilePath();
+  },
 };

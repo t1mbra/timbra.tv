@@ -1,39 +1,17 @@
 import { NextResponse } from "next/server";
-import { readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 
 import {
   mergeImageCard,
   type ImageCardGuildConfigMerged,
 } from "@/lib/mergeImageCardConfig";
+import type { GuildConfig, RootConfig } from "@/lib/persistence/configTypes";
+import {
+  readRawConfig,
+  writeRawConfig,
+} from "@/lib/persistence/configStore";
 import { listAvailableWelcomeCardFontKeys } from "@/lib/resolveImageCardFont";
 import { resolveSharedDataDir } from "@/lib/resolveSharedDataDir";
-
-type GuildConfig = {
-  channelId: string;
-  humanRoleId: string;
-  botRoleId: string;
-  skipBotAccounts: boolean;
-  welcomeStyle: "text" | "embed" | "imageCard";
-  textImageDataUrl: string;
-  message: string;
-  title: string;
-  description: string;
-  color: string;
-  embedAuthorName: string;
-  embedAuthorAvatar: boolean;
-  embedAuthorAvatarUrl: string;
-  embedFooter: string;
-  embedImageDataUrl: string;
-  embedFields: { name: string; value: string; inline: boolean }[];
-  imageCard?: ImageCardGuildConfigMerged;
-};
-
-type RootConfig = {
-  guilds: Record<string, GuildConfig>;
-};
-
-const configPath = path.join(process.cwd(), "..", "shared-data", "config.json");
 
 function availableImageCardFontKeys() {
   const fontDir = path.join(resolveSharedDataDir(), "fonts", "welcome-card");
@@ -61,16 +39,7 @@ const defaultGuildConfig: GuildConfig = {
 };
 
 async function readRootConfig(): Promise<RootConfig> {
-  try {
-    const raw = await readFile(configPath, "utf8");
-    const parsed = JSON.parse(raw) as RootConfig;
-
-    return {
-      guilds: parsed.guilds ?? {},
-    };
-  } catch {
-    return { guilds: {} };
-  }
+  return readRawConfig();
 }
 
 export async function GET(
@@ -160,7 +129,7 @@ export async function POST(
 
     rootConfig.guilds[guildId] = nextGuildConfig;
 
-    await writeFile(configPath, JSON.stringify(rootConfig, null, 2), "utf8");
+    await writeRawConfig(rootConfig);
 
     return NextResponse.json({
       ok: true,
