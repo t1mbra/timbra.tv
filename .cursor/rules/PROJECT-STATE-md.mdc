@@ -1,0 +1,13 @@
+---
+alwaysApply: true
+---
+
+After any significant implementation change, update PROJECT_STATE.md.
+
+Rules:
+- Be precise
+- Do not invent features
+- Reflect only what is actually implemented
+- Update routes, API routes, working features, persistence, known problems, and next step
+- Before editing, inspect the current codebase
+- Before large edits, read PROJECT_STATE.md. After large edits, update PROJECT_STATE.md

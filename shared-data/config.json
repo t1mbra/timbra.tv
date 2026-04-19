@@ -1,0 +1,72 @@
+{
+  "guilds": {
+    "1334342043127779390": {
+      "channelId": "1494146132522307704",
+      "humanRoleId": "",
+      "botRoleId": "",
+      "skipBotAccounts": true,
+      "welcomeStyle": "imageCard",
+      "textImageDataUrl": "",
+      "message": "Добро пожаловать, {username} на {server}! <a:matrix_goat:1379308484180312166> тебе выдана роль <@&1462980254644699360> \nа в <#1350962623067197590> ты узнаешь что тут и как!",
+      "title": "Добро пожаловать",
+      "description": "Очень рады тебя видеть на сервере {server} 💜",
+      "color": "#8b5cf6",
+      "embedAuthorName": "",
+      "embedAuthorAvatar": true,
+      "embedAuthorAvatarUrl": "https://cdn.discordapp.com/avatars/533054239740526627/a_f78360948621bdc69e95cb7e5268bb91.png?size=128",
+      "embedFooter": "",
+      "embedImageDataUrl": "",
+      "embedFields": [],
+      "imageCard": {
+        "title": "{username} вступил в культ {server}",
+        "subtitle": "Нас уже {memberCount}!",
+        "description": "Рады видеть тебя на {server}",
+        "fontFamily": "inter",
+        "textColor": "#d0c7e6",
+        "titleStyle": {
+          "textSize": "l",
+          "fontWeight": "bold",
+          "fontStyle": "normal"
+        },
+        "subtitleStyle": {
+          "textSize": "m",
+          "fontWeight": "regular",
+          "fontStyle": "italic"
+        },
+        "textSize": "l",
+        "fontWeight": "bold",
+        "fontStyle": "normal",
+        "overlayColor": "#130321",
+        "overlayOpacity": 0.83,
+        "backgroundMode": "image",
+        "backgroundColor": "#744a72",
+        "accentColor": "#8038ce",
+        "backgroundImage": {
+          "enabled": true,
+          "path": "assets/guilds/1334342043127779390/welcome-card-background.png",
+          "filename": "welcome-card-background.png"
+        },
+        "showAvatar": true,
+        "showUsername": false
+      }
+    },
+    "1494768445982511295": {
+      "channelId": "1494768446762913944",
+      "humanRoleId": "",
+      "botRoleId": "",
+      "skipBotAccounts": true,
+      "welcomeStyle": "text",
+      "textImageDataUrl": "",
+      "message": "Добро пожаловать, {user}! ✨",
+      "title": "Добро пожаловать",
+      "description": "Очень рады тебя видеть на сервере {server} 💜",
+      "color": "#8b5cf6",
+      "embedAuthorName": "",
+      "embedAuthorAvatar": false,
+      "embedAuthorAvatarUrl": "",
+      "embedFooter": "",
+      "embedImageDataUrl": "",
+      "embedFields": []
+    }
+  }
+}

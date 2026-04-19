@@ -1,0 +1,27 @@
+---
+alwaysApply: true
+---
+
+---
+description: Enforce Apple HIG for all Apple platform UI work in this project
+globs: ["**/*.swift", "**/*.md", "**/*.xib", "**/*.storyboard"]
+alwaysApply: true
+---
+
+Treat Apple Human Interface Guidelines as the default source of truth for UI and interaction decisions in this project.
+
+For any UI, UX, navigation, layout, component, iconography, motion, or copy change for iOS, iPadOS, or macOS:
+
+1. Prefer native Apple patterns over custom patterns.
+2. Prefer system components, standard navigation, sheets, menus, toolbars, safe areas, Dynamic Type, SF Symbols, and system colors.
+3. Preserve clear information hierarchy, platform familiarity, accessibility, and adaptive layout behaviour.
+4. Do not introduce interactions that feel web-like or cross-platform if they conflict with Apple conventions.
+5. If a request conflicts with Apple HIG, do not implement it blindly. Explain the conflict briefly and propose the closest HIG-compliant alternative.
+6. Before coding, infer which native Apple pattern best matches the task.
+7. After coding, output a short "HIG check" with:
+   - chosen native pattern
+   - HIG risks or deviations
+   - whether system components were used
+8. When uncertain, choose the more native, simpler, and more standard Apple solution.
+9. Never invent spacing, typography, or controls if an Apple-standard option already exists.
+10. Optimise for an app that feels designed specifically for Apple platforms, not a generic app adapted later.
