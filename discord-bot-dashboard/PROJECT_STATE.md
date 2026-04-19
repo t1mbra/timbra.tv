@@ -4,17 +4,29 @@
 
 **Текущая контрольная точка:** `v0.1.0-timbrabot-mvp` (замороженный MVP вместе с `discord-bot/` и `shared-data/`). Список возможностей релиза — в корневом `CHANGELOG.md`; ограничения MVP — в корневом `PROJECT_STATE.md` (раздел «Известные ограничения»).
 
+## Текущее production-состояние (v0.3.1-prod-bugfixes)
+
+Краткий снимок без мелких визуальных правок:
+
+- **Railway:** задеплоены **Next.js-дашборд** и **воркер бота**; персистентность на **Postgres** включена.
+- **Главная (`/`):** навигация только по **клику по CTA** — авто-редиректа при загрузке нет.
+- **OAuth callback (`/api/auth/discord/callback`):** редирект на **`/dashboard/{guildId}`**, если есть хотя бы одна управляемая гильдия с **`botConnected`**; иначе на **`/servers`**. При выборе гильдии учитывается нечувствительный к секретам cookie **`timbrabot_last_guild_id`** (если id валиден в списке и с ботом), иначе — первая подключённая по той же сортировке, что и `GET /api/discord/guilds`.
+- **Запоминание последнего дашборда:** cookie **`timbrabot_last_guild_id`** (ставится при входе в `/dashboard/[guildId]`); при logout **не** очищается; **`localStorage`** (`lastGuildId` / имя) по-прежнему для подписи на Home.
+- **Футер:** общий **`AppFooter`** на всех страницах — только приглушённый текст (копирайт + версия), **без** отдельной подложки, на общем градиенте **`app-bg`**.
+- **Сайт timbra.tv** (`website/` в корне репозитория) остаётся **отдельным** от этой панели бота.
+- **Ассеты и шрифты карточки:** по-прежнему **файловые** (`shared-data`, whitelist TTF) — зафиксированное ограничение.
+
 ## Overview
 Next.js dashboard для Discord-бота с OAuth-авторизацией через Discord. Сейчас приложение позволяет войти, выбрать доступный сервер, открыть страницу настроек конкретного сервера и сохранять welcome/autorole-конфиг в общий JSON-файл. На `/servers` для иконок статуса бота используется **lucide-react**.
 
 ## Routes
-- `/` — лендинг: показывает информацию о боте, статус входа, CTA на логин; при наличии `lastGuildId` в `localStorage` — ссылка «Панель управления» ведёт на **`/dashboard/[guildId]`**; допустимость и **`botConnected`** проверяются **на сервере** при загрузке дашборда (см. ниже).
+- `/` — лендинг: информация о боте, статус входа, CTA только по клику (без авто-редиректа); «Панель управления» ведёт на **`/dashboard/[guildId]`** для целевой подключённой гильдии (как у CTA — `localStorage` + список с сервера); допустимость и **`botConnected`** проверяются **на сервере** при загрузке дашборда (см. ниже).
 - `/servers` — список доступных серверов пользователя (owner/admin), выбор сервера для перехода в dashboard.
 - `/dashboard/[guildId]` — **server component** (`page.tsx`): по cookie и **`getUserManageableGuildsWithBotState`** (тот же источник, что **`GET /api/discord/guilds`**) проверяет, что гильдия есть в списке управляемых и **`botConnected`**; иначе **`redirect('/servers')`**; без сессии — **`redirect('/')`**. После guard в клиент передаётся **`connectedGuilds`** и **`availableWelcomeCardFontKeys`** (список ключей шрифтов карточки с локальным `.ttf` в **`shared-data/fonts/welcome-card`**, см. **`listAvailableWelcomeCardFontKeys`**): **`result.guilds.filter((g) => g.botConnected)`** (тип **`ConnectedGuildForDashboard`**). UI — **`DashboardGuildPageClient`** с **`key={guildId}`**. Клиент: конфиг — **`fetch`** с **`credentials: 'include'`** и **`AbortSignal`**; **каналы/роли/эмодзи** — только после **`GET /api/dashboard/bootstrap`** с ненулевым **`viewer`** (зависимости эффекта: `guildId` + `bootstrap?.viewer?.id`), иначе при первом SPA-входе с главной запрос ресурсов мог уйти «слишком рано» и эффект не повторялся; отмена — **`AbortController`** + счётчик поколений, чтобы **`resourcesLoading`** не залипал после `abort`. В **development** в консоль пишутся **`console.debug`** для bootstrap/resources (можно убрать позже).
 
 ## API Routes
 - `/api/auth/discord/login` (GET) — редиректит в Discord OAuth authorize.
-- `/api/auth/discord/callback` (GET) — обменивает `code` на токен, получает пользователя, ставит auth-cookie, редиректит на `/servers`.
+- `/api/auth/discord/callback` (GET) — обменивает `code` на токен, получает пользователя, ставит auth-cookie; редирект на **`/dashboard/{guildId}`** при наличии подключённой управляемой гильдии (приоритет валидного **`timbrabot_last_guild_id`**), иначе на **`/servers`**.
 - `/api/auth/logout` (GET) — очищает auth-cookie и редиректит на `/`.
 - `/api/dashboard/bootstrap` (GET) — возвращает текущего viewer (по access token), информацию о боте (по bot token) и **`applicationId`** (id приложения для OAuth-ссылки «добавить бота»). При сбоях Discord не отдаёт 500: частичные данные + опционально `bootstrapWarnings`.
 - `/api/discord/guilds` (GET) — обёртка над **`getUserManageableGuildsWithBotState`** (`lib/getUserManageableGuildsWithBotState.ts`): те же гильдии, фильтр owner/admin, сортировка, **`botConnected`** из **`readBotConnectedGuildIds()`** / **`bot-state.json`**. Запросы к Discord через `lib/discordFetch.ts`. Поле `iconUrl`: CDN `https://cdn.discordapp.com/icons/{id}/{hash}.{png|gif}` (`gif` если hash начинается с `a_`).
@@ -28,7 +40,7 @@ Next.js dashboard для Discord-бота с OAuth-авторизацией че
 ## Current UI Flow
 1. Пользователь открывает `/`.
 2. Если не авторизован — нажимает "Войти через Discord" и идет в OAuth flow.
-3. После callback попадает на `/servers`.
+3. После callback попадает на **`/dashboard/...`** при наличии подключённой гильдии (см. callback), иначе на **`/servers`**.
 4. На `/servers` после **`/api/discord/guilds`** сразу видны карточки с **`botConnected`** из **`bot-state.json`** (без N запросов `/connection` на загрузку). Сортировка: сначала с `botConnected`, затем без; внутри группы по имени. У карточки: рядом с названием — компактная иконка статуса бота (lucide: подключён / не подключён) и короткий бейдж роли (вл./адм./мод. по `owner` и `permissions`); CTA «Управление» — `ds-btn-primary`, «Подключить» — `ds-btn-secondary` (тот же flow и модалка). Модалка «Подключить бота»: «Открыть Discord» → новая вкладка → опрос **`/connection`** до успеха или таймаута; при успехе — переход в `/dashboard/[guildId]`; по таймауту — «Попробовать ещё» / «Отмена».
 5. Переходит на `/dashboard/[guildId]` (ссылка с главной); сервер при рендере либо отдаёт панель, либо редирект на **`/servers`**.
 6. Клиентский дашборд подгружает bootstrap, ресурсы и конфиг (без отдельного «гейта» доступа на клиенте). Верхняя полоса: слева — аватар и имя бота; справа — только **`UserMenu`** (имя пользователя, «Серверы» → **`/servers`**, «Выйти»). Селектор текущего сервера (**`SidebarServerSwitcher`**) — над левым сайдбаром навигации (не в шапке): список подключённых гильдий, отметка текущего, внизу «Подключить сервер» → **`/servers`**; колонка сайдбара **`lg:grid-cols-[minmax(0,272px)_1fr]`**, длинные имена обрезаются с **`title`**. Переходы и **`triggerUnsavedGuard`** без изменений.
@@ -72,6 +84,8 @@ Next.js dashboard для Discord-бота с OAuth-авторизацией че
   - `discord_access_token`
   - `discord_user_id`
   - `discord_user_name`
+- **cookie (не httpOnly, не секрет):**
+  - `timbrabot_last_guild_id` — последний открытый дашборд (для post-OAuth редиректа; не очищается при logout)
 - **localStorage:**
   - `lastGuildId`
   - `lastGuildName`
@@ -86,8 +100,7 @@ Next.js dashboard для Discord-бота с OAuth-авторизацией че
 - `lib/discordFetch.ts` — общий `fetch` к `https://discord.com/api`: таймаут по умолчанию 8s, до 2 ретраев после сбоя (всего до 3 попыток), экспоненциальный бэкофф + джиттер, ретраи на 5xx и 429 (с учётом `Retry-After`).
 
 ## Important Files
-- `app/components/AppFooter.tsx` — общий нижний колонтитул (логотип + копирайт).
-- `public/timbra-logo.svg` — SVG-логотип для футера.
+- `app/components/AppFooter.tsx` — общий нижний колонтитул (копирайт + версия, без логотипа).
 - `app/components/CollapsibleSettingsSection.tsx` — сворачиваемый блок настроек (заголовок + подзаголовок + тело; a11y, анимация).
 - `app/components/dashboardMenuTokens.ts` — общие стили панелей/строк меню дашборда.
 - `app/components/SidebarServerSwitcher.tsx` — выбор сервера над сайдбаром (только подключённые гильдии из пропсов).
@@ -138,7 +151,7 @@ Next.js dashboard для Discord-бота с OAuth-авторизацией че
 
 ## Layout Consistency
 - В `app/globals.css`: токены `--interactive-ease`, `--interactive-fast` / `--interactive-normal`, `--focus-ring-strong` / `--focus-ring-soft`; у `.ds-btn-*`, `.ds-liquid-btn`, `button.ds-liquid-list-item` — согласованные hover/active/disabled (у disabled без «живого» hover); фокус у ссылок-кнопок и `.welcome-interactive-token`; `prefers-reduced-motion` убирает scale на active; в `@layer base` — курсоры (pointer / text / not-allowed). `CollapsibleSettingsSection`, `UserMenu`, переключатель ботов — `focus-visible` и тихие hover/active.
-- В корневом `app/layout.tsx` подключён общий футер `app/components/AppFooter.tsx`: логотип `public/timbra-logo.svg`, строка копирайта «© 2026 timbra.tv», тихая вторичная типографика, одна строка контента и компактные вертикальные отступы (`py-3`); контент и футер обёрнуты в общий блок с классом `app-bg`, чтобы под футером не оставалась отдельная «плоская» полоса фона `body`. Оболочка `min-h-screen` + `flex` + `flex-1` у области `children`, чтобы на коротких страницах футер оставался у нижнего края окна, на длинных — шёл после контента. У `<main>` на `/`, `/servers` и `/dashboard/[guildId]` вместо `min-h-screen` используется `flex-1` / `min-h-0`, чтобы не суммировать высоту с футером; класс `app-bg` с `<main>` снят, фон задаётся обёрткой в `layout`.
+- В корневом `app/layout.tsx` подключён общий футер `app/components/AppFooter.tsx`: копирайт и версия приложения, тихая вторичная типографика, без отдельной подложки; контент и футер обёрнуты в общий блок с классом `app-bg`. Оболочка `min-h-screen` + `flex` + `flex-1` у области `children`. У `<main>` на `/`, `/servers` и `/dashboard/[guildId]` вместо `min-h-screen` используется `flex-1` / `min-h-0`, чтобы не суммировать высоту с футером; класс `app-bg` с `<main>` снят, фон задаётся обёрткой в `layout`.
 - В `app/globals.css` добавлен единый контейнер контента `app-container` (`max-width: 1200px`).
 - На страницах `app/page.tsx`, `app/servers/page.tsx` и `app/dashboard/[guildId]/page.tsx` заменены разные `max-w-*` обёртки на `app-container`, чтобы ширина “тела” была одинаковой на всех страницах.
 - Для внутренних страниц (`app/servers/page.tsx` и `app/dashboard/[guildId]/page.tsx`) добавлен отдельный более узкий контейнер `app-shell-container` (`max-width: 1040px`), чтобы shell-поток был компактнее и ближе к desktop HIG-паттернам.
