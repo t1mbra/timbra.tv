@@ -2159,6 +2159,7 @@ export function DashboardGuildPageClient({
       window.removeEventListener("scroll", update, true);
     };
   }, [
+    activeSection,
     welcomeStyle,
     imageCardActiveField,
     imageCard.title,
@@ -2226,6 +2227,7 @@ export function DashboardGuildPageClient({
       window.removeEventListener("scroll", sync, true);
     };
   }, [
+    activeSection,
     welcomeStyle,
     imageCard.title,
     imageCard.subtitle,
@@ -2318,14 +2320,18 @@ export function DashboardGuildPageClient({
 
   useLayoutEffect(() => {
     if (messageEditorMode !== "preview") return;
-    const el = previewEditorRef.current;
-    if (!el) return;
-    fillWelcomeRichEditor(el, message, welcomeRichCtx);
-    if (pendingWelcomeCaretRef.current !== null) {
-      const c = pendingWelcomeCaretRef.current;
-      pendingWelcomeCaretRef.current = null;
-      setWelcomePlainCaretOffset(el, Math.min(c, message.length));
-    }
+    const runFill = () => {
+      const el = previewEditorRef.current;
+      if (!el) return;
+      fillWelcomeRichEditor(el, message, welcomeRichCtx);
+      if (pendingWelcomeCaretRef.current !== null) {
+        const c = pendingWelcomeCaretRef.current;
+        pendingWelcomeCaretRef.current = null;
+        setWelcomePlainCaretOffset(el, Math.min(c, message.length));
+      }
+    };
+    runFill();
+    queueMicrotask(runFill);
     // message намеренно не в deps: обычный ввод синхронизирует только React state, DOM остаётся источником истины.
     // activeSection: при возврате в «Приветствие» превью-редактор монтируется заново — нужно восстановить DOM из state.
   }, [

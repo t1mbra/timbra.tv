@@ -581,6 +581,13 @@ async function handleGuildMemberAdd(member) {
       await assignAutoRole(member, config.humanRoleId, "human");
     }
 
+    if (config.welcomeEnabled === false) {
+      if (process.env.NODE_ENV === "development") {
+        console.log(`[welcome] disabled for guild ${guildId}`);
+      }
+      return;
+    }
+
     await sendWelcome(member, config);
   } catch (err) {
     const e = /** @type {Error} */ (err);
