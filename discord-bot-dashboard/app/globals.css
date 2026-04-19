@@ -640,6 +640,13 @@ a.ds-btn-ghost:focus-visible {
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.05);
 }
 
+/* Welcome: крупные блоки — только прямые дети, gap между ними (не схлопывается обёртками) */
+.welcome-settings-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+}
+
 /* Welcome Preview: интерактивные токены (канал, роль, плейсхолдер {user}) */
 .welcome-interactive-token {
   cursor: pointer;

@@ -1,11 +1,12 @@
 {
   "guilds": {
     "1334342043127779390": {
-      "channelId": "1365789267942576228",
+      "welcomeEnabled": true,
+      "channelId": "1334343586031865906",
       "humanRoleId": "",
       "botRoleId": "",
       "skipBotAccounts": true,
-      "welcomeStyle": "text",
+      "welcomeStyle": "imageCard",
       "textImageDataUrl": "",
       "message": "Добро пожаловать, {username} на {server}! <a:matrix_goat:1379308484180312166> тебе выдана роль <@&1462980254644699360> \nа в <#1350962623067197590> ты узнаешь что тут и как!",
       "title": "Добро пожаловать",
@@ -37,7 +38,7 @@
         "fontWeight": "bold",
         "fontStyle": "normal",
         "overlayColor": "#130321",
-        "overlayOpacity": 0.83,
+        "overlayOpacity": 0.86,
         "backgroundMode": "image",
         "backgroundColor": "#744a72",
         "accentColor": "#8038ce",
@@ -51,13 +52,14 @@
       }
     },
     "1494768445982511295": {
+      "welcomeEnabled": true,
       "channelId": "1494768446762913944",
       "humanRoleId": "",
       "botRoleId": "",
       "skipBotAccounts": true,
-      "welcomeStyle": "text",
+      "welcomeStyle": "imageCard",
       "textImageDataUrl": "",
-      "message": "Добро пожаловать, {user}! ✨",
+      "message": "Добро пожаловать, {user}! ✨Это странное место называется {server}",
       "title": "Добро пожаловать",
       "description": "Очень рады тебя видеть на сервере {server} 💜",
       "color": "#8b5cf6",
@@ -66,7 +68,38 @@
       "embedAuthorAvatarUrl": "",
       "embedFooter": "",
       "embedImageDataUrl": "",
-      "embedFields": []
+      "embedFields": [],
+      "imageCard": {
+        "title": "Добро пожаловать",
+        "subtitle": "Новый участник",
+        "description": "Рады видеть тебя на {server}",
+        "fontFamily": "inter",
+        "textColor": "#f4f4f5",
+        "titleStyle": {
+          "textSize": "m",
+          "fontWeight": "regular",
+          "fontStyle": "normal"
+        },
+        "subtitleStyle": {
+          "textSize": "m",
+          "fontWeight": "regular",
+          "fontStyle": "normal"
+        },
+        "textSize": "m",
+        "fontWeight": "regular",
+        "fontStyle": "normal",
+        "overlayColor": "#07010c",
+        "overlayOpacity": 0.64,
+        "backgroundMode": "gradient",
+        "backgroundColor": "#18073a",
+        "accentColor": "#8038ce",
+        "backgroundImage": {
+          "enabled": false,
+          "path": ""
+        },
+        "showAvatar": true,
+        "showUsername": false
+      }
     }
   }
 }

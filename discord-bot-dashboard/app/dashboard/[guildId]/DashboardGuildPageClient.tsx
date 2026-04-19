@@ -49,8 +49,10 @@ import { setLastGuildCookieClient } from "@/lib/lastGuildCookie";
 import { ColorPopover } from "../../components/ColorPopover";
 import { WelcomeCardPreviewFontFaces } from "../../components/WelcomeCardPreviewFontFaces";
 import { CollapsibleSettingsSection } from "../../components/CollapsibleSettingsSection";
+import { CompactSwitch } from "../../components/CompactSwitch";
 import { SidebarServerSwitcher } from "../../components/SidebarServerSwitcher";
 import { UserMenu } from "../../components/usermenu";
+import { welcomeModuleCopy } from "@/lib/copy/welcomeModule";
 
 type PickerType = "emoji" | "channel" | "role" | "variable" | null;
 type PickerKind = Exclude<PickerType, null>;
@@ -146,6 +148,7 @@ type EmbedFieldRow = EmbedFieldPersisted & { id: string };
 type ImageCardConfig = ImageCardGuildConfigMerged;
 
 type DashboardConfig = {
+  welcomeEnabled: boolean;
   channelId: string;
   humanRoleId: string;
   botRoleId: string;
@@ -173,6 +176,7 @@ type CustomSelectOption = {
 };
 
 type DirtyConfig = {
+  welcomeEnabled: boolean;
   channelId: string;
   humanRoleId: string;
   botRoleId: string;
@@ -198,6 +202,7 @@ type DirtyConfig = {
 };
 
 function configsEqual(a: DirtyConfig, b: DirtyConfig): boolean {
+  if (a.welcomeEnabled !== b.welcomeEnabled) return false;
   if (a.channelId !== b.channelId) return false;
   if (a.humanRoleId !== b.humanRoleId) return false;
   if (a.botRoleId !== b.botRoleId) return false;
@@ -1488,6 +1493,7 @@ export function DashboardGuildPageClient({
   const [imageCardBgUploadBusy, setImageCardBgUploadBusy] = useState(false);
   const [imageCardBgRemoveBusy, setImageCardBgRemoveBusy] = useState(false);
   const [imageCardTypographyOpen, setImageCardTypographyOpen] = useState(false);
+  const [welcomeEnabled, setWelcomeEnabled] = useState(true);
   const [skipBotAccounts, setSkipBotAccounts] = useState(true);
   const [messageEditorMode, setMessageEditorMode] = useState<WelcomeMessageEditorMode>("preview");
   const [isSaving, setIsSaving] = useState(false);
@@ -1789,6 +1795,7 @@ export function DashboardGuildPageClient({
         const textImageDataUrlResolved = (data.textImageDataUrl ?? "") as string;
 
         const snapshot: DirtyConfig = {
+          welcomeEnabled: data.welcomeEnabled !== false,
           channelId: data.channelId ?? "",
           humanRoleId: data.humanRoleId ?? "",
           botRoleId: data.botRoleId ?? "",
@@ -1817,6 +1824,7 @@ export function DashboardGuildPageClient({
         setChannelId(snapshot.channelId);
         setHumanRoleId(snapshot.humanRoleId);
         setBotRoleId(snapshot.botRoleId);
+        setWelcomeEnabled(snapshot.welcomeEnabled);
         setSkipBotAccounts(snapshot.skipBotAccounts);
         setWelcomeStyle(snapshot.welcomeStyle);
         setTextImageDataUrl(snapshot.textImageDataUrl);
@@ -2604,6 +2612,7 @@ export function DashboardGuildPageClient({
 
   const currentConfig = useMemo<DirtyConfig>(
     () => ({
+      welcomeEnabled,
       channelId,
       humanRoleId,
       botRoleId,
@@ -2629,6 +2638,7 @@ export function DashboardGuildPageClient({
       imageCardExists: true,
     }),
     [
+      welcomeEnabled,
       channelId,
       humanRoleId,
       botRoleId,
@@ -2853,6 +2863,7 @@ export function DashboardGuildPageClient({
     setChannelId(lastSavedConfig.channelId);
     setHumanRoleId(lastSavedConfig.humanRoleId);
     setBotRoleId(lastSavedConfig.botRoleId);
+    setWelcomeEnabled(lastSavedConfig.welcomeEnabled);
     setSkipBotAccounts(lastSavedConfig.skipBotAccounts);
     setWelcomeStyle(lastSavedConfig.welcomeStyle);
     setTextImageDataUrl(lastSavedConfig.textImageDataUrl);
@@ -2883,6 +2894,7 @@ export function DashboardGuildPageClient({
     if (!isDirty) return;
     setIsSaving(true);
     const data = {
+      welcomeEnabled,
       channelId,
       humanRoleId,
       botRoleId,
@@ -3094,29 +3106,66 @@ export function DashboardGuildPageClient({
               aria-label="Разделы настроек"
             >
             <nav className="flex flex-col gap-0.5" aria-label="Навигация по разделам">
-              {SECTION_ITEMS.map(({ id, navLabel }) => (
-                <button
-                  key={id}
-                  type="button"
-                  aria-current={activeSection === id ? "page" : undefined}
-                  onClick={() => {
-                    if (activeSection === id) return;
-                    if (triggerUnsavedGuard()) return;
-                    setActiveSection(id);
-                  }}
-                  className={`flex w-full cursor-pointer items-center gap-3 rounded-lg px-3 py-2.5 text-left text-[14px] font-normal leading-[1.35] tracking-normal transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)] focus-visible:ring-offset-2 focus-visible:ring-offset-[rgba(9,9,15,0.96)] ${
-                    activeSection === id
-                      ? "bg-white/[0.14] text-zinc-50 shadow-[inset_0_1px_0_rgba(255,255,255,0.12)]"
-                      : "text-zinc-200/95 hover:bg-white/[0.08] hover:text-white"
-                  }`}
-                >
-                  <SectionSidebarIcon
-                    id={id}
-                    className={`h-[18px] w-[18px] shrink-0 ${activeSection === id ? "text-zinc-100" : "text-zinc-300"}`}
-                  />
-                  <span className="min-w-0">{navLabel}</span>
-                </button>
-              ))}
+              {SECTION_ITEMS.map(({ id, navLabel }) =>
+                id === "welcome" ? (
+                  <div
+                    key={id}
+                    className={`flex w-full items-center gap-1 rounded-lg pr-1.5 transition focus-within:outline-none ${
+                      activeSection === id
+                        ? "bg-white/[0.14] text-zinc-50 shadow-[inset_0_1px_0_rgba(255,255,255,0.12)]"
+                        : "text-zinc-200/95 hover:bg-white/[0.06]"
+                    }`}
+                  >
+                    <button
+                      type="button"
+                      aria-current={activeSection === id ? "page" : undefined}
+                      onClick={() => {
+                        if (activeSection === id) return;
+                        setActiveSection(id);
+                      }}
+                      className="flex min-w-0 flex-1 cursor-pointer items-center gap-3 rounded-lg px-3 py-2.5 text-left text-[14px] font-normal leading-[1.35] tracking-normal transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)] focus-visible:ring-offset-2 focus-visible:ring-offset-[rgba(9,9,15,0.96)]"
+                    >
+                      <SectionSidebarIcon
+                        id={id}
+                        className={`h-[18px] w-[18px] shrink-0 ${activeSection === id ? "text-zinc-100" : "text-zinc-300"}`}
+                      />
+                      <span className="min-w-0">{navLabel}</span>
+                    </button>
+                    <CompactSwitch
+                      size="sidebar"
+                      checked={welcomeEnabled}
+                      onCheckedChange={(next) => {
+                        setWelcomeEnabled(next);
+                        setActiveSection("welcome");
+                      }}
+                      title={welcomeModuleCopy.sidebarWelcomeToggleAria}
+                      aria-label={welcomeModuleCopy.sidebarWelcomeToggleAria}
+                      className="self-center motion-reduce:transition-none"
+                    />
+                  </div>
+                ) : (
+                  <button
+                    key={id}
+                    type="button"
+                    aria-current={activeSection === id ? "page" : undefined}
+                    onClick={() => {
+                      if (activeSection === id) return;
+                      setActiveSection(id);
+                    }}
+                    className={`flex w-full cursor-pointer items-center gap-3 rounded-lg px-3 py-2.5 text-left text-[14px] font-normal leading-[1.35] tracking-normal transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)] focus-visible:ring-offset-2 focus-visible:ring-offset-[rgba(9,9,15,0.96)] ${
+                      activeSection === id
+                        ? "bg-white/[0.14] text-zinc-50 shadow-[inset_0_1px_0_rgba(255,255,255,0.12)]"
+                        : "text-zinc-200/95 hover:bg-white/[0.08] hover:text-white"
+                    }`}
+                  >
+                    <SectionSidebarIcon
+                      id={id}
+                      className={`h-[18px] w-[18px] shrink-0 ${activeSection === id ? "text-zinc-100" : "text-zinc-300"}`}
+                    />
+                    <span className="min-w-0">{navLabel}</span>
+                  </button>
+                )
+              )}
             </nav>
           </aside>
           </div>
@@ -3132,18 +3181,61 @@ export function DashboardGuildPageClient({
                     subtitle={activeSectionMeta.subtitle}
                     defaultOpen
                   >
-                    <div className="space-y-4">
-                      <div>
-                      <p className="ds-kicker">Канал для приветствия</p>
-                      <div className="mt-2.5">
-                        <CustomSelect
-                          value={channelId}
-                          options={channelOptions}
-                          placeholder={resourcesLoading ? "Загрузка каналов..." : "Не выбран"}
-                          disabled={resourcesLoading}
-                          onChange={setChannelId}
-                          ariaLabel="Канал для приветствия"
-                        />
+                    <div className="relative">
+                      <div
+                        className={`welcome-settings-stack${
+                          !welcomeEnabled
+                            ? " pointer-events-none opacity-[0.58] saturate-[0.92]"
+                            : ""
+                        }`}
+                      >
+                    <section
+                      data-welcome-block="delivery"
+                      className="welcome-settings-module px-4 py-4 sm:px-5 sm:py-4"
+                    >
+                      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between sm:gap-4">
+                        <div className="min-w-0">
+                          <p className="ds-kicker">{welcomeModuleCopy.deliverySectionTitle}</p>
+                        </div>
+                        <div
+                          className="flex w-full flex-wrap gap-0.5 rounded-full bg-black/[0.26] p-0.5 sm:w-auto sm:flex-nowrap"
+                          role="tablist"
+                          aria-label={welcomeModuleCopy.deliveryModeTablistAria}
+                        >
+                          <button
+                            type="button"
+                            role="tab"
+                            aria-selected
+                            tabIndex={-1}
+                            className="min-h-9 flex-1 cursor-default rounded-full px-3.5 py-2 text-center text-xs font-medium text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.22)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)] focus-visible:ring-offset-2 focus-visible:ring-offset-[rgba(9,9,15,0.96)] sm:flex-initial bg-[var(--brand)]"
+                          >
+                            {welcomeModuleCopy.deliveryChannelLabel}
+                          </button>
+                          <button
+                            type="button"
+                            role="tab"
+                            aria-selected={false}
+                            disabled
+                            title={welcomeModuleCopy.deliveryDmUnavailableTitle}
+                            aria-label={`${welcomeModuleCopy.deliveryDmTab}: ${welcomeModuleCopy.deliveryDmUnavailableTitle}`}
+                            className="min-h-9 flex-1 cursor-not-allowed rounded-full px-3.5 py-2 text-center text-xs font-medium text-zinc-500 opacity-50 focus-visible:outline-none sm:flex-initial"
+                          >
+                            {welcomeModuleCopy.deliveryDmTab}
+                          </button>
+                        </div>
+                      </div>
+                      <div className="mt-3">
+                        <p className="welcome-help-text">{welcomeModuleCopy.deliveryChannelSelectHint}</p>
+                        <div className="mt-2">
+                          <CustomSelect
+                            value={channelId}
+                            options={channelOptions}
+                            placeholder={resourcesLoading ? "Загрузка каналов..." : "Не выбран"}
+                            disabled={resourcesLoading}
+                            onChange={setChannelId}
+                            ariaLabel="Канал для приветствия"
+                          />
+                        </div>
                       </div>
                       {!resourcesLoading && resourcesError ? (
                         <p className="mt-2.5 text-sm text-rose-400">{resourcesError}</p>
@@ -3168,36 +3260,15 @@ export function DashboardGuildPageClient({
                           Эмодзи не загрузились
                         </p>
                       ) : null}
-                    </div>
+                    </section>
 
-                    <div className="welcome-settings-module px-3 py-3 sm:px-3.5 sm:py-3.5">
-                      <div className="flex items-center justify-between gap-3">
-                        <div className="min-w-0 pr-2">
-                          <p className="ds-kicker">Не приветствовать ботов</p>
-                          <p id="skip-bots-hint" className="welcome-help-text mt-0.5">
-                            Рогатик будет молчать когда приходят боты
-                          </p>
-                        </div>
-                        <button
-                          type="button"
-                          role="switch"
-                          aria-checked={skipBotAccounts}
-                          aria-describedby="skip-bots-hint"
-                          aria-label="Не приветствовать ботов в канале"
-                          onClick={() => setSkipBotAccounts((prev) => !prev)}
-                          className={`relative h-8 w-11 shrink-0 cursor-pointer rounded-full transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)] focus-visible:ring-offset-2 focus-visible:ring-offset-[rgba(9,9,15,0.96)] active:scale-[0.97] active:brightness-95 motion-reduce:active:scale-100 ${skipBotAccounts ? "bg-[var(--brand)]" : "bg-zinc-600"}`}
-                        >
-                          <span
-                            className={`absolute top-1 h-6 w-6 rounded-full bg-white shadow transition-[left] duration-200 ease-out ${skipBotAccounts ? "left-[calc(100%-1.5rem-0.25rem)]" : "left-1"}`}
-                          />
-                        </button>
-                      </div>
-                    </div>
-
-                    <div className="welcome-settings-module px-3 py-3 sm:px-3.5 sm:py-3.5">
+                    <section
+                      data-welcome-block="composer"
+                      className="welcome-settings-module overflow-hidden rounded-2xl ring-1 ring-white/[0.08] shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]"
+                    >
                       <div
                         ref={pickerAreaRef}
-                        className="relative overflow-visible rounded-xl bg-white/[0.04] ring-1 ring-white/[0.055] shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]"
+                        className="relative overflow-visible border-b border-white/[0.06] bg-white/[0.02]"
                         role="group"
                         aria-labelledby="welcome-message-label"
                       >
@@ -3324,9 +3395,8 @@ export function DashboardGuildPageClient({
                           </div>
                         </div>
                       </div>
-                    </div>
 
-                    <div className="welcome-settings-module px-3 py-3 sm:px-3.5 sm:py-3.5">
+                      <div className="border-t border-white/[0.05] bg-white/[0.015] px-3 py-3 sm:px-3.5 sm:py-3.5">
                       <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between sm:gap-4">
                         <div className="min-w-0">
                           <p className="ds-kicker">Стиль приветствия</p>
@@ -4304,59 +4374,81 @@ export function DashboardGuildPageClient({
                           </div>
                         </div>
                       </div>
+                    </section>
+
+                    <section
+                      data-welcome-block="skip-bots"
+                      className="welcome-settings-module px-4 py-4 sm:px-5 sm:py-4"
+                    >
+                      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between sm:gap-4">
+                        <div className="min-w-0">
+                          <p className="ds-kicker">{welcomeModuleCopy.skipBotAccountsTitle}</p>
+                          <p className="welcome-help-text mt-0.5">
+                            {welcomeModuleCopy.skipBotAccountsHelp}
+                          </p>
+                        </div>
+                        <CompactSwitch
+                          checked={skipBotAccounts}
+                          onCheckedChange={setSkipBotAccounts}
+                          aria-label={welcomeModuleCopy.skipBotAccountsTitle}
+                          title={welcomeModuleCopy.skipBotAccountsTitle}
+                        />
+                      </div>
+                    </section>
 
                     <div
-                      className="border-t border-white/[0.05] pt-3.5"
+                      data-welcome-block="test-actions"
+                      className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between"
                       role="group"
                       aria-label="Проверка приветствия в канале"
                     >
-                      <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between sm:gap-x-4 sm:gap-y-1">
-                        <button
-                          type="button"
-                          onClick={handleSendTestWelcome}
-                          disabled={isSendingTest}
-                          aria-label={
-                            isSendingTest
-                              ? "Отправка тестового сообщения"
-                              : "Отправить тестовое приветствие в выбранный канал"
-                          }
-                          className="inline-flex w-fit shrink-0 cursor-pointer items-center gap-1.5 rounded-full border border-white/[0.07] bg-white/[0.025] px-3 py-1.5 text-[12px] font-medium leading-tight text-zinc-400 shadow-none transition hover:border-white/[0.11] hover:bg-white/[0.05] hover:text-zinc-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)] focus-visible:ring-offset-2 focus-visible:ring-offset-[rgba(9,9,15,0.96)] disabled:cursor-not-allowed disabled:opacity-45"
+                      <button
+                        type="button"
+                        onClick={handleSendTestWelcome}
+                        disabled={isSendingTest}
+                        aria-label={
+                          isSendingTest
+                            ? "Отправка тестового сообщения"
+                            : "Отправить тестовое приветствие в выбранный канал"
+                        }
+                        className="inline-flex w-fit shrink-0 cursor-pointer items-center gap-1.5 rounded-full border border-white/[0.07] bg-white/[0.025] px-3 py-1.5 text-[12px] font-medium leading-tight text-zinc-400 shadow-none transition hover:border-white/[0.11] hover:bg-white/[0.05] hover:text-zinc-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)] focus-visible:ring-offset-2 focus-visible:ring-offset-[rgba(9,9,15,0.96)] disabled:cursor-not-allowed disabled:opacity-45"
+                      >
+                        <svg
+                          viewBox="0 0 24 24"
+                          className="h-3 w-3 shrink-0 opacity-70"
+                          fill="none"
+                          stroke="currentColor"
+                          strokeWidth="1.65"
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          aria-hidden
                         >
-                          <svg
-                            viewBox="0 0 24 24"
-                            className="h-3 w-3 shrink-0 opacity-70"
-                            fill="none"
-                            stroke="currentColor"
-                            strokeWidth="1.65"
-                            strokeLinecap="round"
-                            strokeLinejoin="round"
-                            aria-hidden
+                          <path d="M22 2 11 13M22 2l-7 20-4-9-9-4 20-7Z" />
+                        </svg>
+                        {isSendingTest ? "Отправка…" : "Отправить тест"}
+                      </button>
+                      <div className="flex min-w-0 flex-1 flex-col gap-0.5 sm:items-end sm:text-right">
+                        <p className="text-[11px] font-normal leading-snug text-zinc-500">
+                          Проверить, как сообщение выглядит в Discord
+                        </p>
+                        {testSendStatus ? (
+                          <p
+                            role="status"
+                            className={`max-w-prose text-[11px] font-normal leading-snug sm:ml-auto ${
+                              testSendStatusTone === "success"
+                                ? "text-emerald-500/85"
+                                : testSendStatusTone === "error"
+                                  ? "text-rose-400/85"
+                                  : "text-zinc-500"
+                            }`}
                           >
-                            <path d="M22 2 11 13M22 2l-7 20-4-9-9-4 20-7Z" />
-                          </svg>
-                          {isSendingTest ? "Отправка…" : "Отправить тест"}
-                        </button>
-                        <div className="flex min-w-0 flex-1 flex-col gap-0.5 sm:items-end sm:text-right">
-                          <p className="text-[11px] font-normal leading-snug text-zinc-500">
-                            Проверить, как сообщение выглядит в Discord
+                            {testSendStatus}
                           </p>
-                          {testSendStatus ? (
-                            <p
-                              role="status"
-                              className={`max-w-prose text-[11px] font-normal leading-snug sm:ml-auto ${
-                                testSendStatusTone === "success"
-                                  ? "text-emerald-500/85"
-                                  : testSendStatusTone === "error"
-                                    ? "text-rose-400/85"
-                                    : "text-zinc-500"
-                              }`}
-                            >
-                              {testSendStatus}
-                            </p>
-                          ) : null}
-                        </div>
+                        ) : null}
                       </div>
                     </div>
+                    </div>
+
                     {pickerPortalReady &&
                       openPicker &&
                       pickerPanelLayout &&
@@ -4538,6 +4630,18 @@ export function DashboardGuildPageClient({
                         )
                       : null}
 
+                    {!welcomeEnabled ? (
+                      <button
+                        type="button"
+                        className="absolute inset-0 z-[5] flex cursor-pointer flex-col items-center justify-center gap-2 bg-transparent px-5 text-center outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)] focus-visible:ring-offset-2 focus-visible:ring-offset-[rgba(9,9,15,0.96)]"
+                        aria-label={welcomeModuleCopy.welcomeDisabledOverlayHint}
+                        onClick={() => setWelcomeEnabled(true)}
+                      >
+                        <span className="max-w-sm text-[12px] font-normal leading-snug text-zinc-400/95">
+                          {welcomeModuleCopy.welcomeDisabledOverlayHint}
+                        </span>
+                      </button>
+                    ) : null}
                     </div>
                   </CollapsibleSettingsSection>
                 ) : activeSection === "autoRoles" ? (

@@ -2,6 +2,8 @@ import type { ImageCardGuildConfigMerged } from "@/lib/mergeImageCardConfig";
 
 /** Пер-серверный конфиг welcome (как в shared-data/config.json). */
 export type GuildConfig = {
+  /** Включено ли приветствие новых участников (дашборд; воркер может подхватить позже). */
+  welcomeEnabled: boolean;
   channelId: string;
   humanRoleId: string;
   botRoleId: string;

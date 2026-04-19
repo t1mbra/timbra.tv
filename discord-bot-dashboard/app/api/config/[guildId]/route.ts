@@ -19,6 +19,7 @@ function availableImageCardFontKeys() {
 }
 
 const defaultGuildConfig: GuildConfig = {
+  welcomeEnabled: true,
   channelId: "",
   humanRoleId: "",
   botRoleId: "",
@@ -85,6 +86,10 @@ export async function POST(
     const avail = availableImageCardFontKeys();
 
     const nextGuildConfig: GuildConfig = {
+      welcomeEnabled:
+        typeof body.welcomeEnabled === "boolean"
+          ? body.welcomeEnabled
+          : defaultGuildConfig.welcomeEnabled,
       channelId: body.channelId ?? "",
       humanRoleId: body.humanRoleId ?? "",
       botRoleId: body.botRoleId ?? "",
