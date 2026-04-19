@@ -128,6 +128,15 @@ body {
     var(--background);
 }
 
+/* Лендинг: мягче, меньше зерна; не привязано к arbitrary Tailwind в разметке */
+.landing-ambient {
+  background:
+    radial-gradient(ellipse 90% 55% at 50% -15%, rgba(128, 56, 206, 0.11), transparent 58%),
+    radial-gradient(ellipse 70% 45% at 95% 95%, rgba(128, 56, 206, 0.07), transparent 52%),
+    radial-gradient(ellipse 55% 40% at 5% 90%, rgba(255, 255, 255, 0.04), transparent 48%);
+  opacity: 1;
+}
+
 .app-container {
   width: 100%;
   max-width: 1200px;

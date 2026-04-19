@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import { Inter } from "next/font/google";
-import { AppFooter } from "./components/AppFooter";
+import { ConditionalFooter } from "./components/ConditionalFooter";
 import "./globals.css";
 
 const inter = Inter({
@@ -23,7 +23,7 @@ export default function RootLayout({
       <body className="flex min-h-screen flex-col">
         <div className="app-bg flex min-h-screen w-full flex-1 flex-col">
           <div className="flex min-h-0 flex-1 flex-col">{children}</div>
-          <AppFooter />
+          <ConditionalFooter />
         </div>
       </body>
     </html>

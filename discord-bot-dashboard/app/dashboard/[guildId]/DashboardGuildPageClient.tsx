@@ -2313,7 +2313,20 @@ export function DashboardGuildPageClient({
       setWelcomePlainCaretOffset(el, Math.min(c, message.length));
     }
     // message намеренно не в deps: обычный ввод синхронизирует только React state, DOM остаётся источником истины.
-  }, [messageEditorMode, richEditorBootstrap, welcomeRichCtx, previewEditorSyncSeq]);
+    // activeSection: при возврате в «Приветствие» превью-редактор монтируется заново — нужно восстановить DOM из state.
+  }, [
+    messageEditorMode,
+    richEditorBootstrap,
+    welcomeRichCtx,
+    previewEditorSyncSeq,
+    activeSection,
+  ]);
+
+  useEffect(() => {
+    if (activeSection === "welcome") return;
+    previewInsertRangeRef.current = null;
+    previewInsertMessageSnapshotRef.current = null;
+  }, [activeSection]);
 
   useLayoutEffect(() => {
     if (pendingRawCaretRef.current === null) return;
@@ -3054,7 +3067,7 @@ export function DashboardGuildPageClient({
               }}
               onLogout={() => {
                 if (triggerUnsavedGuard()) return;
-                router.push("/api/auth/logout");
+                window.location.assign("/api/auth/logout");
               }}
             />
           </div>

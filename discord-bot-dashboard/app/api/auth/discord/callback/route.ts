@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 
+import { getUserManageableGuildsWithBotState } from "@/lib/getUserManageableGuildsWithBotState";
 import { publicAbsoluteUrl } from "@/lib/resolvePublicOrigin";
 
 type DiscordTokenResponse = {
@@ -77,7 +78,17 @@ export async function GET(request: Request) {
 
   const user = (await userRes.json()) as DiscordUser;
 
-  const response = NextResponse.redirect(publicAbsoluteUrl("/servers", request));
+  /** Тот же порядок, что в GET /api/discord/guilds: owner выше, затем имя (ru). Берём первую с botConnected. */
+  let nextPath = "/servers";
+  const guildsResult = await getUserManageableGuildsWithBotState(tokenData.access_token);
+  if (guildsResult.status === "ok") {
+    const firstConnected = guildsResult.guilds.find((g) => g.botConnected);
+    if (firstConnected) {
+      nextPath = `/dashboard/${firstConnected.id}`;
+    }
+  }
+
+  const response = NextResponse.redirect(publicAbsoluteUrl(nextPath, request));
 
   response.cookies.set("discord_access_token", tokenData.access_token, {
     httpOnly: true,

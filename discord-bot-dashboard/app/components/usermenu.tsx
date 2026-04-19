@@ -142,7 +142,7 @@ export function UserMenu({
                 onLogout();
                 return;
               }
-              router.push("/api/auth/logout");
+              window.location.assign("/api/auth/logout");
             }}
             className={`${dashboardMenuRowClass} text-rose-300/95 hover:text-rose-200`}
           >

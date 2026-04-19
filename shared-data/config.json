@@ -1,11 +1,11 @@
 {
   "guilds": {
     "1334342043127779390": {
-      "channelId": "1494146132522307704",
+      "channelId": "1365789267942576228",
       "humanRoleId": "",
       "botRoleId": "",
       "skipBotAccounts": true,
-      "welcomeStyle": "imageCard",
+      "welcomeStyle": "text",
       "textImageDataUrl": "",
       "message": "Добро пожаловать, {username} на {server}! <a:matrix_goat:1379308484180312166> тебе выдана роль <@&1462980254644699360> \nа в <#1350962623067197590> ты узнаешь что тут и как!",
       "title": "Добро пожаловать",
