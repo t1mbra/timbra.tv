@@ -126,6 +126,12 @@ type GuildResourcesResponse = {
   channels: GuildChannel[];
   roles: GuildRole[];
   emojis: GuildEmoji[];
+  /** Ошибки отдельных запросов к Discord (частичный успех) */
+  errors?: {
+    channels?: string;
+    roles?: string;
+    emojis?: string;
+  };
 };
 
 type EmbedFieldPersisted = {
@@ -1431,6 +1437,7 @@ export function DashboardGuildPageClient({
     channels: [],
     roles: [],
     emojis: [],
+    errors: undefined,
   });
   const [resourcesLoading, setResourcesLoading] = useState(false);
   const [resourcesError, setResourcesError] = useState("");
@@ -1899,7 +1906,7 @@ export function DashboardGuildPageClient({
     const reqId = ++resourcesFetchGenerationRef.current;
     const controller = new AbortController();
 
-    setResources({ channels: [], roles: [], emojis: [] });
+    setResources({ channels: [], roles: [], emojis: [], errors: undefined });
     setResourcesError("");
     setResourcesLoading(true);
 
@@ -1929,15 +1936,25 @@ export function DashboardGuildPageClient({
           setResourcesError(
             errorData?.error ?? "Не удалось загрузить ресурсы сервера"
           );
-          setResources({ channels: [], roles: [], emojis: [] });
+          setResources({ channels: [], roles: [], emojis: [], errors: undefined });
           return;
         }
 
-        const data = await res.json();
+        const data = (await res.json()) as GuildResourcesResponse & {
+          errors?: GuildResourcesResponse["errors"];
+        };
 
         if (reqId !== resourcesFetchGenerationRef.current) return;
 
-        setResources(data);
+        setResources({
+          channels: Array.isArray(data.channels) ? data.channels : [],
+          roles: Array.isArray(data.roles) ? data.roles : [],
+          emojis: Array.isArray(data.emojis) ? data.emojis : [],
+          errors:
+            data.errors && typeof data.errors === "object"
+              ? data.errors
+              : undefined,
+        });
         setResourcesError("");
         if (process.env.NODE_ENV === "development") {
           console.debug("[dashboard resources] ok", {
@@ -1951,7 +1968,7 @@ export function DashboardGuildPageClient({
         if (controller.signal.aborted) return;
 
         setResourcesError("Не удалось загрузить ресурсы сервера");
-        setResources({ channels: [], roles: [], emojis: [] });
+        setResources({ channels: [], roles: [], emojis: [], errors: undefined });
       } finally {
         if (reqId === resourcesFetchGenerationRef.current) {
           setResourcesLoading(false);
@@ -3097,7 +3114,7 @@ export function DashboardGuildPageClient({
                     defaultOpen
                   >
                     <div className="space-y-4">
-                    <div>
+                      <div>
                       <p className="ds-kicker">Канал для приветствия</p>
                       <div className="mt-2.5">
                         <CustomSelect
@@ -3111,6 +3128,26 @@ export function DashboardGuildPageClient({
                       </div>
                       {!resourcesLoading && resourcesError ? (
                         <p className="mt-2.5 text-sm text-rose-400">{resourcesError}</p>
+                      ) : null}
+                      {!resourcesLoading &&
+                      !resourcesError &&
+                      resources.errors?.channels ? (
+                        <p
+                          className="mt-2.5 text-xs text-amber-400/90"
+                          title={resources.errors.channels}
+                          role="status"
+                        >
+                          Каналы не загрузились
+                        </p>
+                      ) : null}
+                      {!resourcesLoading && resources.errors?.emojis ? (
+                        <p
+                          className="mt-2.5 text-xs text-amber-400/90"
+                          title={resources.errors.emojis}
+                          role="status"
+                        >
+                          Эмодзи не загрузились
+                        </p>
                       ) : null}
                     </div>
 
@@ -4338,6 +4375,14 @@ export function DashboardGuildPageClient({
                               {openPicker === "emoji" ? (
                                 resourcesLoading ? (
                                   <p className="py-8 text-center text-[13px] text-zinc-500">Загрузка…</p>
+                                ) : resources.errors?.emojis ? (
+                                  <p
+                                    className="py-8 text-center text-[13px] text-amber-400/90"
+                                    title={resources.errors.emojis}
+                                    role="status"
+                                  >
+                                    Эмодзи не загрузились
+                                  </p>
                                 ) : pickerItems.length === 0 ? (
                                   <p className="py-8 text-center text-[13px] text-zinc-500">Нет эмодзи</p>
                                 ) : (
@@ -4485,6 +4530,15 @@ export function DashboardGuildPageClient({
                     defaultOpen
                   >
                     <div className="space-y-5">
+                      {!resourcesLoading && resources.errors?.roles ? (
+                        <p
+                          className="text-xs text-amber-400/90"
+                          title={resources.errors.roles}
+                          role="status"
+                        >
+                          Роли не загрузились
+                        </p>
+                      ) : null}
                       <div>
                         <p className="ds-kicker mb-2">Роль для участников</p>
                         <CustomSelect
