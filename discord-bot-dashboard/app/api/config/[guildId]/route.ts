@@ -1,10 +1,7 @@
 import { NextResponse } from "next/server";
 import path from "node:path";
 
-import {
-  mergeImageCard,
-  type ImageCardGuildConfigMerged,
-} from "@/lib/mergeImageCardConfig";
+import { mergeImageCard } from "@/lib/mergeImageCardConfig";
 import type { GuildConfig, RootConfig } from "@/lib/persistence/configTypes";
 import {
   readRawConfig,
@@ -24,6 +21,11 @@ const defaultGuildConfig: GuildConfig = {
   humanRoleId: "",
   botRoleId: "",
   skipBotAccounts: true,
+  welcomeDeliveryMode: "channel",
+  welcomeDmMessage: "Добро пожаловать, {user}! ✨",
+  welcomeDmAlsoSendToChannel: false,
+  welcomeDmChannelId: "",
+  welcomeDmChannelMessage: "Добро пожаловать, {user}! ✨",
   welcomeStyle: "text",
   textImageDataUrl: "",
   message: "Добро пожаловать, {user}! ✨",
@@ -38,6 +40,34 @@ const defaultGuildConfig: GuildConfig = {
   embedFields: [],
   imageCard: mergeImageCard(undefined, { availableFontKeys: availableImageCardFontKeys() }),
 };
+
+function mergeDeliveryWithDefaults(
+  g: Partial<GuildConfig> | undefined,
+  baseMessage: string,
+  baseChannelId: string
+): Pick<
+  GuildConfig,
+  | "welcomeDeliveryMode"
+  | "welcomeDmMessage"
+  | "welcomeDmAlsoSendToChannel"
+  | "welcomeDmChannelId"
+  | "welcomeDmChannelMessage"
+> {
+  const mode: "channel" | "dm" =
+    g && g.welcomeDeliveryMode === "dm" ? "dm" : "channel";
+  return {
+    welcomeDeliveryMode: mode,
+    welcomeDmMessage:
+      typeof g?.welcomeDmMessage === "string" ? g.welcomeDmMessage : baseMessage,
+    welcomeDmAlsoSendToChannel: g?.welcomeDmAlsoSendToChannel === true,
+    welcomeDmChannelId:
+      typeof g?.welcomeDmChannelId === "string" ? g.welcomeDmChannelId : baseChannelId,
+    welcomeDmChannelMessage:
+      typeof g?.welcomeDmChannelMessage === "string"
+        ? g.welcomeDmChannelMessage
+        : baseMessage,
+  };
+}
 
 async function readRootConfig(): Promise<RootConfig> {
   return readRawConfig();
@@ -55,9 +85,15 @@ export async function GET(
     if (!g) {
       return NextResponse.json(defaultGuildConfig);
     }
+    const gc = g as GuildConfig;
+    const baseMessage =
+      typeof gc.message === "string" ? gc.message : defaultGuildConfig.message;
+    const baseChannelId =
+      typeof gc.channelId === "string" ? gc.channelId : defaultGuildConfig.channelId;
     const avail = availableImageCardFontKeys();
     return NextResponse.json({
-      ...g,
+      ...gc,
+      ...mergeDeliveryWithDefaults(gc, baseMessage, baseChannelId),
       imageCard: mergeImageCard(
         g && typeof g === "object" && "imageCard" in g
           ? (g as GuildConfig).imageCard
@@ -85,15 +121,21 @@ export async function POST(
     const rootConfig = await readRootConfig();
     const avail = availableImageCardFontKeys();
 
+    const mergedMessage =
+      typeof body.message === "string" ? body.message : defaultGuildConfig.message;
+    const mergedChannelId =
+      typeof body.channelId === "string" ? body.channelId : "";
+
     const nextGuildConfig: GuildConfig = {
       welcomeEnabled:
         typeof body.welcomeEnabled === "boolean"
           ? body.welcomeEnabled
           : defaultGuildConfig.welcomeEnabled,
-      channelId: body.channelId ?? "",
+      channelId: mergedChannelId,
       humanRoleId: body.humanRoleId ?? "",
       botRoleId: body.botRoleId ?? "",
       skipBotAccounts: body.skipBotAccounts ?? true,
+      ...mergeDeliveryWithDefaults(body as Partial<GuildConfig>, mergedMessage, mergedChannelId),
       welcomeStyle: body.welcomeStyle ?? defaultGuildConfig.welcomeStyle,
       textImageDataUrl: body.textImageDataUrl ?? "",
       message: body.message ?? defaultGuildConfig.message,

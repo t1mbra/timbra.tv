@@ -6,9 +6,14 @@ export const welcomeModuleCopy = {
   deliveryChannelLabel: "Канал",
   /** Подпись к полю выбора канала (без дубля с сегментом «Канал») */
   deliveryChannelSelectHint: "Куда публиковать приветствие",
-  /** Сегмент «ЛС» в заголовке блока отправления (пока без логики) */
   deliveryDmTab: "ЛС",
-  deliveryDmUnavailableTitle: "ЛС появится позже",
+  deliveryDmMessageLabel: "Сообщение в ЛС",
+  deliveryDmMessageHelp: "Только текст. Плейсхолдеры: {user}, {username}, {server}, {memberCount}, {date}",
+  deliveryAlsoChannelLabel: "Также отправить в канал сервера",
+  deliveryChannelCopyHint: "Канал сервера",
+  deliveryChannelMessageLabel: "Сообщение в канал",
+  deliveryDmPrivacyNote:
+    "ЛС может не прийти, если у участника закрыты личные сообщения от участников сервера.",
   deliveryModeTablistAria: "Способ отправки приветствия: канал или личные сообщения",
   welcomeDisabledOverlayHint: "Приветствие выключено — нажмите, чтобы включить",
   sidebarWelcomeToggleAria: "Включить или выключить приветствие для новых участников",

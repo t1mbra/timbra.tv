@@ -147,12 +147,19 @@ type EmbedFieldRow = EmbedFieldPersisted & { id: string };
 
 type ImageCardConfig = ImageCardGuildConfigMerged;
 
+type WelcomeDeliveryMode = "channel" | "dm";
+
 type DashboardConfig = {
   welcomeEnabled: boolean;
   channelId: string;
   humanRoleId: string;
   botRoleId: string;
   skipBotAccounts: boolean;
+  welcomeDeliveryMode: WelcomeDeliveryMode;
+  welcomeDmMessage: string;
+  welcomeDmAlsoSendToChannel: boolean;
+  welcomeDmChannelId: string;
+  welcomeDmChannelMessage: string;
   welcomeStyle: "text" | "embed" | "imageCard";
   textImageDataUrl: string;
   message: string;
@@ -181,6 +188,11 @@ type DirtyConfig = {
   humanRoleId: string;
   botRoleId: string;
   skipBotAccounts: boolean;
+  welcomeDeliveryMode: WelcomeDeliveryMode;
+  welcomeDmMessage: string;
+  welcomeDmAlsoSendToChannel: boolean;
+  welcomeDmChannelId: string;
+  welcomeDmChannelMessage: string;
   message: string;
   title: string;
   description: string;
@@ -207,6 +219,11 @@ function configsEqual(a: DirtyConfig, b: DirtyConfig): boolean {
   if (a.humanRoleId !== b.humanRoleId) return false;
   if (a.botRoleId !== b.botRoleId) return false;
   if (a.skipBotAccounts !== b.skipBotAccounts) return false;
+  if (a.welcomeDeliveryMode !== b.welcomeDeliveryMode) return false;
+  if (a.welcomeDmMessage !== b.welcomeDmMessage) return false;
+  if (a.welcomeDmAlsoSendToChannel !== b.welcomeDmAlsoSendToChannel) return false;
+  if (a.welcomeDmChannelId !== b.welcomeDmChannelId) return false;
+  if (a.welcomeDmChannelMessage !== b.welcomeDmChannelMessage) return false;
   if (a.message !== b.message) return false;
   if (a.title !== b.title) return false;
   if (a.description !== b.description) return false;
@@ -414,6 +431,14 @@ function applyWelcomeImageCardPreviewPlaceholders(text: string): string {
 
 const DEFAULT_WELCOME_MESSAGE = "Добро пожаловать, {user}! ✨\nЗагляни в {channel:rules}";
 const DEFAULT_WELCOME_DESCRIPTION = "Очень рады тебя видеть на сервере {server} 💜";
+
+const WELCOME_DM_PLACEHOLDER_BUTTONS: { label: string; insert: string }[] = [
+  { label: "{user}", insert: "{user}" },
+  { label: "{username}", insert: "{username}" },
+  { label: "{server}", insert: "{server}" },
+  { label: "{memberCount}", insert: "{memberCount}" },
+  { label: "{date}", insert: "{date}" },
+];
 
 function getTitleByType(type: PickerType): string {
   switch (type) {
@@ -1495,6 +1520,17 @@ export function DashboardGuildPageClient({
   const [imageCardTypographyOpen, setImageCardTypographyOpen] = useState(false);
   const [welcomeEnabled, setWelcomeEnabled] = useState(true);
   const [skipBotAccounts, setSkipBotAccounts] = useState(true);
+  const [welcomeDeliveryMode, setWelcomeDeliveryMode] =
+    useState<WelcomeDeliveryMode>("channel");
+  const [welcomeDmMessage, setWelcomeDmMessage] = useState(DEFAULT_WELCOME_MESSAGE);
+  const [welcomeDmAlsoSendToChannel, setWelcomeDmAlsoSendToChannel] = useState(false);
+  const [welcomeDmChannelId, setWelcomeDmChannelId] = useState("");
+  const [welcomeDmChannelMessage, setWelcomeDmChannelMessage] =
+    useState(DEFAULT_WELCOME_MESSAGE);
+  const welcomeDmTextareaRef = useRef<HTMLTextAreaElement | null>(null);
+  const welcomeDmChannelTextareaRef = useRef<HTMLTextAreaElement | null>(null);
+  const welcomeDmInsertCaretRef = useRef<TextAreaInsertAnchor | null>(null);
+  const welcomeDmChannelInsertCaretRef = useRef<TextAreaInsertAnchor | null>(null);
   const [messageEditorMode, setMessageEditorMode] = useState<WelcomeMessageEditorMode>("preview");
   const [isSaving, setIsSaving] = useState(false);
   const [lastSavedConfig, setLastSavedConfig] = useState<DirtyConfig | null>(null);
@@ -1794,13 +1830,36 @@ export function DashboardGuildPageClient({
         const welcomeStyleResolved = (data.welcomeStyle ?? "text") as DashboardConfig["welcomeStyle"];
         const textImageDataUrlResolved = (data.textImageDataUrl ?? "") as string;
 
+        const baseMessageResolved = data.message ?? DEFAULT_WELCOME_MESSAGE;
+        const baseChannelIdResolved = data.channelId ?? "";
+        const welcomeDeliveryModeResolved: WelcomeDeliveryMode =
+          data.welcomeDeliveryMode === "dm" ? "dm" : "channel";
+        const welcomeDmMessageResolved =
+          typeof data.welcomeDmMessage === "string"
+            ? data.welcomeDmMessage
+            : baseMessageResolved;
+        const welcomeDmAlsoSendToChannelResolved = data.welcomeDmAlsoSendToChannel === true;
+        const welcomeDmChannelIdResolved =
+          typeof data.welcomeDmChannelId === "string"
+            ? data.welcomeDmChannelId
+            : baseChannelIdResolved;
+        const welcomeDmChannelMessageResolved =
+          typeof data.welcomeDmChannelMessage === "string"
+            ? data.welcomeDmChannelMessage
+            : baseMessageResolved;
+
         const snapshot: DirtyConfig = {
           welcomeEnabled: data.welcomeEnabled !== false,
-          channelId: data.channelId ?? "",
+          channelId: baseChannelIdResolved,
           humanRoleId: data.humanRoleId ?? "",
           botRoleId: data.botRoleId ?? "",
           skipBotAccounts: data.skipBotAccounts ?? true,
-          message: data.message ?? DEFAULT_WELCOME_MESSAGE,
+          welcomeDeliveryMode: welcomeDeliveryModeResolved,
+          welcomeDmMessage: welcomeDmMessageResolved,
+          welcomeDmAlsoSendToChannel: welcomeDmAlsoSendToChannelResolved,
+          welcomeDmChannelId: welcomeDmChannelIdResolved,
+          welcomeDmChannelMessage: welcomeDmChannelMessageResolved,
+          message: baseMessageResolved,
           title: data.title ?? "Добро пожаловать",
           description: data.description ?? DEFAULT_WELCOME_DESCRIPTION,
           color: data.color ?? "#8b5cf6",
@@ -1826,6 +1885,11 @@ export function DashboardGuildPageClient({
         setBotRoleId(snapshot.botRoleId);
         setWelcomeEnabled(snapshot.welcomeEnabled);
         setSkipBotAccounts(snapshot.skipBotAccounts);
+        setWelcomeDeliveryMode(snapshot.welcomeDeliveryMode);
+        setWelcomeDmMessage(snapshot.welcomeDmMessage);
+        setWelcomeDmAlsoSendToChannel(snapshot.welcomeDmAlsoSendToChannel);
+        setWelcomeDmChannelId(snapshot.welcomeDmChannelId);
+        setWelcomeDmChannelMessage(snapshot.welcomeDmChannelMessage);
         setWelcomeStyle(snapshot.welcomeStyle);
         setTextImageDataUrl(snapshot.textImageDataUrl);
         setMessage(snapshot.message);
@@ -2623,6 +2687,11 @@ export function DashboardGuildPageClient({
       humanRoleId,
       botRoleId,
       skipBotAccounts,
+      welcomeDeliveryMode,
+      welcomeDmMessage,
+      welcomeDmAlsoSendToChannel,
+      welcomeDmChannelId,
+      welcomeDmChannelMessage,
       message,
       title,
       description,
@@ -2649,6 +2718,11 @@ export function DashboardGuildPageClient({
       humanRoleId,
       botRoleId,
       skipBotAccounts,
+      welcomeDeliveryMode,
+      welcomeDmMessage,
+      welcomeDmAlsoSendToChannel,
+      welcomeDmChannelId,
+      welcomeDmChannelMessage,
       message,
       title,
       description,
@@ -2790,7 +2864,14 @@ export function DashboardGuildPageClient({
   };
 
   const handleSendTestWelcome = async () => {
-    if (!channelId.trim()) {
+    if (welcomeDeliveryMode === "dm") {
+      const dmText = welcomeDmMessage.trim();
+      if (!dmText) {
+        setTestSendStatus("Введите текст сообщения в ЛС для теста");
+        setTestSendStatusTone("error");
+        return;
+      }
+    } else if (!channelId.trim()) {
       setTestSendStatus("Выберите канал для приветствия");
       setTestSendStatusTone("error");
       return;
@@ -2804,22 +2885,29 @@ export function DashboardGuildPageClient({
       const res = await fetch(`/api/discord/guilds/${guildId}/send-test`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          channelId: channelId.trim(),
-          welcomeStyle,
-          message,
-          title,
-          description,
-          color,
-          textImageDataUrl,
-          embedAuthorName,
-          embedAuthorAvatar,
-          embedFooter,
-          embedImageDataUrl,
-          embedFields: embedFieldsToPersisted(embedFields),
-          viewerAvatarUrl: bootstrap?.viewer?.avatarUrl ?? null,
-          ...(welcomeStyle === "imageCard" ? { imageCard } : {}),
-        }),
+        body: JSON.stringify(
+          welcomeDeliveryMode === "dm"
+            ? {
+                welcomeDeliveryMode: "dm",
+                welcomeDmMessage,
+              }
+            : {
+                channelId: channelId.trim(),
+                welcomeStyle,
+                message,
+                title,
+                description,
+                color,
+                textImageDataUrl,
+                embedAuthorName,
+                embedAuthorAvatar,
+                embedFooter,
+                embedImageDataUrl,
+                embedFields: embedFieldsToPersisted(embedFields),
+                viewerAvatarUrl: bootstrap?.viewer?.avatarUrl ?? null,
+                ...(welcomeStyle === "imageCard" ? { imageCard } : {}),
+              }
+        ),
       });
 
       let data: {
@@ -2871,6 +2959,11 @@ export function DashboardGuildPageClient({
     setBotRoleId(lastSavedConfig.botRoleId);
     setWelcomeEnabled(lastSavedConfig.welcomeEnabled);
     setSkipBotAccounts(lastSavedConfig.skipBotAccounts);
+    setWelcomeDeliveryMode(lastSavedConfig.welcomeDeliveryMode);
+    setWelcomeDmMessage(lastSavedConfig.welcomeDmMessage);
+    setWelcomeDmAlsoSendToChannel(lastSavedConfig.welcomeDmAlsoSendToChannel);
+    setWelcomeDmChannelId(lastSavedConfig.welcomeDmChannelId);
+    setWelcomeDmChannelMessage(lastSavedConfig.welcomeDmChannelMessage);
     setWelcomeStyle(lastSavedConfig.welcomeStyle);
     setTextImageDataUrl(lastSavedConfig.textImageDataUrl);
     setMessage(lastSavedConfig.message);
@@ -2905,6 +2998,11 @@ export function DashboardGuildPageClient({
       humanRoleId,
       botRoleId,
       skipBotAccounts,
+      welcomeDeliveryMode,
+      welcomeDmMessage,
+      welcomeDmAlsoSendToChannel,
+      welcomeDmChannelId,
+      welcomeDmChannelMessage,
       welcomeStyle,
       textImageDataUrl,
       message,
@@ -3211,25 +3309,34 @@ export function DashboardGuildPageClient({
                           <button
                             type="button"
                             role="tab"
-                            aria-selected
-                            tabIndex={-1}
-                            className="min-h-9 flex-1 cursor-default rounded-full px-3.5 py-2 text-center text-xs font-medium text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.22)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)] focus-visible:ring-offset-2 focus-visible:ring-offset-[rgba(9,9,15,0.96)] sm:flex-initial bg-[var(--brand)]"
+                            aria-selected={welcomeDeliveryMode === "channel"}
+                            tabIndex={welcomeDeliveryMode === "channel" ? 0 : -1}
+                            onClick={() => setWelcomeDeliveryMode("channel")}
+                            className={`min-h-9 flex-1 rounded-full px-3.5 py-2 text-center text-xs font-medium transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)] focus-visible:ring-offset-2 focus-visible:ring-offset-[rgba(9,9,15,0.96)] sm:flex-initial ${
+                              welcomeDeliveryMode === "channel"
+                                ? "cursor-default bg-[var(--brand)] text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.22)]"
+                                : "cursor-pointer text-zinc-500 hover:text-zinc-300"
+                            }`}
                           >
                             {welcomeModuleCopy.deliveryChannelLabel}
                           </button>
                           <button
                             type="button"
                             role="tab"
-                            aria-selected={false}
-                            disabled
-                            title={welcomeModuleCopy.deliveryDmUnavailableTitle}
-                            aria-label={`${welcomeModuleCopy.deliveryDmTab}: ${welcomeModuleCopy.deliveryDmUnavailableTitle}`}
-                            className="min-h-9 flex-1 cursor-not-allowed rounded-full px-3.5 py-2 text-center text-xs font-medium text-zinc-500 opacity-50 focus-visible:outline-none sm:flex-initial"
+                            aria-selected={welcomeDeliveryMode === "dm"}
+                            tabIndex={welcomeDeliveryMode === "dm" ? 0 : -1}
+                            onClick={() => setWelcomeDeliveryMode("dm")}
+                            className={`min-h-9 flex-1 rounded-full px-3.5 py-2 text-center text-xs font-medium transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)] focus-visible:ring-offset-2 focus-visible:ring-offset-[rgba(9,9,15,0.96)] sm:flex-initial ${
+                              welcomeDeliveryMode === "dm"
+                                ? "cursor-default bg-[var(--brand)] text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.22)]"
+                                : "cursor-pointer text-zinc-500 hover:text-zinc-300"
+                            }`}
                           >
                             {welcomeModuleCopy.deliveryDmTab}
                           </button>
                         </div>
                       </div>
+                      {welcomeDeliveryMode === "channel" ? (
                       <div className="mt-3">
                         <p className="welcome-help-text">{welcomeModuleCopy.deliveryChannelSelectHint}</p>
                         <div className="mt-2">
@@ -3243,6 +3350,203 @@ export function DashboardGuildPageClient({
                           />
                         </div>
                       </div>
+                      ) : (
+                      <div className="mt-3 space-y-4">
+                        <div>
+                          <p className="ds-kicker" id="welcome-dm-message-label">
+                            {welcomeModuleCopy.deliveryDmMessageLabel}
+                          </p>
+                          <p className="welcome-help-text mt-0.5">
+                            {welcomeModuleCopy.deliveryDmMessageHelp}
+                          </p>
+                          <div className="relative mt-2">
+                            <textarea
+                              ref={welcomeDmTextareaRef}
+                              value={welcomeDmMessage}
+                              onChange={(e) => setWelcomeDmMessage(e.target.value)}
+                              onMouseDown={() => {
+                                const ta = welcomeDmTextareaRef.current;
+                                if (!ta) return;
+                                welcomeDmInsertCaretRef.current = {
+                                  start: ta.selectionStart ?? 0,
+                                  end: ta.selectionEnd ?? 0,
+                                  valueLen: ta.value.length,
+                                };
+                              }}
+                              onSelect={() => {
+                                const ta = welcomeDmTextareaRef.current;
+                                if (!ta) return;
+                                welcomeDmInsertCaretRef.current = {
+                                  start: ta.selectionStart ?? 0,
+                                  end: ta.selectionEnd ?? 0,
+                                  valueLen: ta.value.length,
+                                };
+                              }}
+                              onBlur={() => {
+                                welcomeDmInsertCaretRef.current = null;
+                              }}
+                              rows={5}
+                              spellCheck={false}
+                              className="min-h-28 w-full resize-y rounded-xl border border-white/[0.07] bg-black/[0.14] px-3 py-2.5 text-[15px] leading-relaxed text-zinc-200 shadow-[inset_0_1px_0_rgba(255,255,255,0.04)] outline-none placeholder:text-zinc-500 focus-visible:border-white/[0.12] focus-visible:ring-2 focus-visible:ring-[var(--ring)] focus-visible:ring-offset-2 focus-visible:ring-offset-[rgba(9,9,15,0.96)]"
+                              aria-labelledby="welcome-dm-message-label"
+                            />
+                            <div
+                              className="pointer-events-none absolute bottom-2.5 right-2.5 z-10 flex justify-end"
+                              aria-hidden
+                            >
+                              <div className="pointer-events-auto flex max-w-[min(100%,18rem)] flex-wrap items-center justify-end gap-0.5 rounded-full border border-white/[0.09] bg-zinc-950/40 px-1 py-1 shadow-[0_8px_32px_rgba(0,0,0,0.4)] backdrop-blur-xl">
+                                {WELCOME_DM_PLACEHOLDER_BUTTONS.map(({ label, insert }) => (
+                                  <button
+                                    key={label}
+                                    type="button"
+                                    title={label}
+                                    onMouseDown={(e) => {
+                                      e.preventDefault();
+                                      const ta = welcomeDmTextareaRef.current;
+                                      if (!ta) return;
+                                      welcomeDmInsertCaretRef.current = {
+                                        start: ta.selectionStart ?? 0,
+                                        end: ta.selectionEnd ?? 0,
+                                        valueLen: ta.value.length,
+                                      };
+                                    }}
+                                    onClick={() => {
+                                      const ta = welcomeDmTextareaRef.current;
+                                      if (!ta) return;
+                                      insertTextIntoTextAreaControlled(
+                                        ta,
+                                        insert,
+                                        welcomeDmInsertCaretRef.current,
+                                        (nextValue, caretAfter) => {
+                                          setWelcomeDmMessage(nextValue);
+                                          welcomeDmInsertCaretRef.current = {
+                                            start: caretAfter,
+                                            end: caretAfter,
+                                            valueLen: nextValue.length,
+                                          };
+                                        }
+                                      );
+                                    }}
+                                    className="rounded-full px-1.5 py-0.5 text-[10px] font-medium text-zinc-400 transition hover:bg-white/[0.1] hover:text-zinc-200"
+                                  >
+                                    {label}
+                                  </button>
+                                ))}
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+                        <p className="welcome-help-text">{welcomeModuleCopy.deliveryDmPrivacyNote}</p>
+                        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between sm:gap-4">
+                          <div className="min-w-0">
+                            <p className="ds-kicker">{welcomeModuleCopy.deliveryAlsoChannelLabel}</p>
+                          </div>
+                          <CompactSwitch
+                            checked={welcomeDmAlsoSendToChannel}
+                            onCheckedChange={setWelcomeDmAlsoSendToChannel}
+                            aria-label={welcomeModuleCopy.deliveryAlsoChannelLabel}
+                            title={welcomeModuleCopy.deliveryAlsoChannelLabel}
+                          />
+                        </div>
+                        {welcomeDmAlsoSendToChannel ? (
+                          <div className="space-y-3">
+                            <div>
+                              <p className="welcome-nested-kicker text-[11px] font-medium uppercase tracking-wide text-zinc-500">
+                                {welcomeModuleCopy.deliveryChannelCopyHint}
+                              </p>
+                              <div className="mt-2">
+                                <CustomSelect
+                                  value={welcomeDmChannelId}
+                                  options={channelOptions}
+                                  placeholder={resourcesLoading ? "Загрузка каналов..." : "Не выбран"}
+                                  disabled={resourcesLoading}
+                                  onChange={setWelcomeDmChannelId}
+                                  ariaLabel="Канал сервера для дубля приветствия"
+                                />
+                              </div>
+                            </div>
+                            <div>
+                              <p className="ds-kicker">{welcomeModuleCopy.deliveryChannelMessageLabel}</p>
+                              <div className="relative mt-2">
+                                <textarea
+                                  ref={welcomeDmChannelTextareaRef}
+                                  value={welcomeDmChannelMessage}
+                                  onChange={(e) => setWelcomeDmChannelMessage(e.target.value)}
+                                  onMouseDown={() => {
+                                    const ta = welcomeDmChannelTextareaRef.current;
+                                    if (!ta) return;
+                                    welcomeDmChannelInsertCaretRef.current = {
+                                      start: ta.selectionStart ?? 0,
+                                      end: ta.selectionEnd ?? 0,
+                                      valueLen: ta.value.length,
+                                    };
+                                  }}
+                                  onSelect={() => {
+                                    const ta = welcomeDmChannelTextareaRef.current;
+                                    if (!ta) return;
+                                    welcomeDmChannelInsertCaretRef.current = {
+                                      start: ta.selectionStart ?? 0,
+                                      end: ta.selectionEnd ?? 0,
+                                      valueLen: ta.value.length,
+                                    };
+                                  }}
+                                  onBlur={() => {
+                                    welcomeDmChannelInsertCaretRef.current = null;
+                                  }}
+                                  rows={4}
+                                  spellCheck={false}
+                                  className="min-h-24 w-full resize-y rounded-xl border border-white/[0.07] bg-black/[0.14] px-3 py-2.5 text-[15px] leading-relaxed text-zinc-200 shadow-[inset_0_1px_0_rgba(255,255,255,0.04)] outline-none placeholder:text-zinc-500 focus-visible:border-white/[0.12] focus-visible:ring-2 focus-visible:ring-[var(--ring)] focus-visible:ring-offset-2 focus-visible:ring-offset-[rgba(9,9,15,0.96)]"
+                                />
+                                <div
+                                  className="pointer-events-none absolute bottom-2.5 right-2.5 z-10 flex justify-end"
+                                  aria-hidden
+                                >
+                                  <div className="pointer-events-auto flex max-w-[min(100%,18rem)] flex-wrap items-center justify-end gap-0.5 rounded-full border border-white/[0.09] bg-zinc-950/40 px-1 py-1 shadow-[0_8px_32px_rgba(0,0,0,0.4)] backdrop-blur-xl">
+                                    {WELCOME_DM_PLACEHOLDER_BUTTONS.map(({ label, insert }) => (
+                                      <button
+                                        key={`ch-${label}`}
+                                        type="button"
+                                        title={label}
+                                        onMouseDown={(e) => {
+                                          e.preventDefault();
+                                          const ta = welcomeDmChannelTextareaRef.current;
+                                          if (!ta) return;
+                                          welcomeDmChannelInsertCaretRef.current = {
+                                            start: ta.selectionStart ?? 0,
+                                            end: ta.selectionEnd ?? 0,
+                                            valueLen: ta.value.length,
+                                          };
+                                        }}
+                                        onClick={() => {
+                                          const ta = welcomeDmChannelTextareaRef.current;
+                                          if (!ta) return;
+                                          insertTextIntoTextAreaControlled(
+                                            ta,
+                                            insert,
+                                            welcomeDmChannelInsertCaretRef.current,
+                                            (nextValue, caretAfter) => {
+                                              setWelcomeDmChannelMessage(nextValue);
+                                              welcomeDmChannelInsertCaretRef.current = {
+                                                start: caretAfter,
+                                                end: caretAfter,
+                                                valueLen: nextValue.length,
+                                              };
+                                            }
+                                          );
+                                        }}
+                                        className="rounded-full px-1.5 py-0.5 text-[10px] font-medium text-zinc-400 transition hover:bg-white/[0.1] hover:text-zinc-200"
+                                      >
+                                        {label}
+                                      </button>
+                                    ))}
+                                  </div>
+                                </div>
+                              </div>
+                            </div>
+                          </div>
+                        ) : null}
+                      </div>
+                      )}
                       {!resourcesLoading && resourcesError ? (
                         <p className="mt-2.5 text-sm text-rose-400">{resourcesError}</p>
                       ) : null}
@@ -3268,6 +3572,7 @@ export function DashboardGuildPageClient({
                       ) : null}
                     </section>
 
+                    {welcomeDeliveryMode === "channel" ? (
                     <section
                       data-welcome-block="composer"
                       className="welcome-settings-module overflow-hidden rounded-2xl ring-1 ring-white/[0.08] shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]"
@@ -4381,6 +4686,7 @@ export function DashboardGuildPageClient({
                         </div>
                       </div>
                     </section>
+                    ) : null}
 
                     <section
                       data-welcome-block="skip-bots"
@@ -4406,7 +4712,11 @@ export function DashboardGuildPageClient({
                       data-welcome-block="test-actions"
                       className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between"
                       role="group"
-                      aria-label="Проверка приветствия в канале"
+                      aria-label={
+                        welcomeDeliveryMode === "dm"
+                          ? "Проверка приветствия в личных сообщениях"
+                          : "Проверка приветствия в канале"
+                      }
                     >
                       <button
                         type="button"
@@ -4415,7 +4725,9 @@ export function DashboardGuildPageClient({
                         aria-label={
                           isSendingTest
                             ? "Отправка тестового сообщения"
-                            : "Отправить тестовое приветствие в выбранный канал"
+                            : welcomeDeliveryMode === "dm"
+                              ? "Отправить тестовое приветствие в личку текущему пользователю"
+                              : "Отправить тестовое приветствие в выбранный канал"
                         }
                         className="inline-flex w-fit shrink-0 cursor-pointer items-center gap-1.5 rounded-full border border-white/[0.07] bg-white/[0.025] px-3 py-1.5 text-[12px] font-medium leading-tight text-zinc-400 shadow-none transition hover:border-white/[0.11] hover:bg-white/[0.05] hover:text-zinc-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)] focus-visible:ring-offset-2 focus-visible:ring-offset-[rgba(9,9,15,0.96)] disabled:cursor-not-allowed disabled:opacity-45"
                       >
@@ -4435,7 +4747,9 @@ export function DashboardGuildPageClient({
                       </button>
                       <div className="flex min-w-0 flex-1 flex-col gap-0.5 sm:items-end sm:text-right">
                         <p className="text-[11px] font-normal leading-snug text-zinc-500">
-                          Проверить, как сообщение выглядит в Discord
+                          {welcomeDeliveryMode === "dm"
+                            ? "Тест придёт вам в ЛС от бота (как новому участнику)"
+                            : "Проверить, как сообщение выглядит в Discord"}
                         </p>
                         {testSendStatus ? (
                           <p
@@ -4456,6 +4770,7 @@ export function DashboardGuildPageClient({
                     </div>
 
                     {pickerPortalReady &&
+                      welcomeDeliveryMode === "channel" &&
                       openPicker &&
                       pickerPanelLayout &&
                       (welcomeStyle === "text" ||

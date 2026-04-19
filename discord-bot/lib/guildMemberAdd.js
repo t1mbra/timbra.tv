@@ -552,6 +552,95 @@ async function sendWelcome(member, config) {
 }
 
 /**
+ * Приветствие в ЛС + опционально отдельный текст в канал (только текст, без embed/imageCard).
+ * @param {import('discord.js').GuildMember} member
+ * @param {Record<string, unknown>} config
+ */
+async function sendWelcomeDm(member, config) {
+  if (member.user.bot && config.skipBotAccounts === true) {
+    console.log(`[welcome] DM skipped for bot ${member.user.tag} (skipBotAccounts)`);
+    return;
+  }
+
+  const ctx = buildTemplateContext(member);
+
+  const dmTemplateRaw =
+    typeof config.welcomeDmMessage === "string"
+      ? config.welcomeDmMessage
+      : typeof config.message === "string"
+        ? config.message
+        : "";
+  const dmContent = resolveTemplate(dmTemplateRaw, ctx).trim();
+  if (!dmContent) {
+    console.log("[welcome] DM skipped: empty welcomeDmMessage", { member: member.user.tag });
+  } else {
+    try {
+      await member.user.send({ content: dmContent });
+      console.log(`[welcome] DM welcome sent for ${member.user.tag}`);
+    } catch (err) {
+      const e = /** @type {Error & { code?: number }} */ (err);
+      const code = e.code;
+      console.warn(
+        `[welcome] DM failed for ${member.user.tag}:`,
+        e.message,
+        typeof code === "number" ? `(code ${code})` : ""
+      );
+    }
+  }
+
+  if (config.welcomeDmAlsoSendToChannel !== true) return;
+
+  const chRaw = config.welcomeDmChannelId;
+  const channelId = typeof chRaw === "string" ? chRaw.trim() : "";
+  if (!channelId) {
+    console.warn("[welcome] channel copy skipped: welcomeDmChannelId missing");
+    return;
+  }
+  if (!isNonEmptySnowflake(channelId)) {
+    console.warn("[welcome] channel copy skipped: welcomeDmChannelId is not a valid snowflake");
+    return;
+  }
+
+  const chMsgRaw =
+    typeof config.welcomeDmChannelMessage === "string"
+      ? config.welcomeDmChannelMessage
+      : typeof config.message === "string"
+        ? config.message
+        : "";
+  const channelText = resolveTemplate(chMsgRaw, ctx).trim();
+  if (!channelText) {
+    console.log("[welcome] channel copy skipped: empty welcomeDmChannelMessage", {
+      member: member.user.tag,
+    });
+    return;
+  }
+
+  /** @type {import('discord.js').GuildChannel | import('discord.js').ThreadChannel | null} */
+  let channel = null;
+  try {
+    const fetched = await member.guild.channels.fetch(channelId);
+    channel = fetched;
+  } catch (err) {
+    const e = /** @type {Error} */ (err);
+    console.warn(`[welcome] channel copy: could not fetch channel ${channelId}:`, e.message);
+    return;
+  }
+
+  if (!channel || !channel.isTextBased()) {
+    console.warn(`[welcome] channel copy: channel ${channelId} is not text-sendable`);
+    return;
+  }
+
+  try {
+    await channel.send({ content: channelText });
+    console.log(`[welcome] channel copy sent for ${member.user.tag} (channel ${channelId})`);
+  } catch (err) {
+    const e = /** @type {Error} */ (err);
+    console.warn(`[welcome] channel copy send failed for ${member.user.tag}:`, e.message);
+  }
+}
+
+/**
  * @param {import('discord.js').GuildMember} member
  */
 async function handleGuildMemberAdd(member) {
@@ -588,7 +677,14 @@ async function handleGuildMemberAdd(member) {
       return;
     }
 
-    await sendWelcome(member, config);
+    const modeRaw = config.welcomeDeliveryMode;
+    const mode =
+      typeof modeRaw === "string" ? modeRaw.trim().toLowerCase() : "channel";
+    if (mode === "dm") {
+      await sendWelcomeDm(member, config);
+    } else {
+      await sendWelcome(member, config);
+    }
   } catch (err) {
     const e = /** @type {Error} */ (err);
     console.error("[GuildMemberAdd] unexpected error:", e.message);
@@ -602,6 +698,7 @@ module.exports = {
   hexToDiscordColor,
   assignAutoRole,
   sendWelcome,
+  sendWelcomeDm,
   handleGuildMemberAdd,
   get CONFIG_PATH() {
     return configFilePath();

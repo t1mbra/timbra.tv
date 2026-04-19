@@ -18,6 +18,9 @@ type DiscordGuild = {
 type WelcomeStyle = "text" | "embed" | "imageCard";
 
 type SendTestBody = {
+  /** Тест ЛС: отправить текст текущему пользователю дашборда (OAuth), не в канал. */
+  welcomeDeliveryMode?: string;
+  welcomeDmMessage?: string;
   channelId?: string;
   welcomeStyle?: string;
   message?: string;
@@ -83,6 +86,14 @@ async function fetchGuildsForUser(accessToken: string) {
   });
 }
 
+async function fetchOAuthUser(accessToken: string) {
+  return discordFetch("/users/@me", {
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+    },
+  });
+}
+
 async function readDiscordErrorText(res: Response): Promise<string> {
   const t = await res.text().catch(() => "");
   if (!t) return `HTTP ${res.status}`;
@@ -142,31 +153,42 @@ export async function POST(
     );
   }
 
-  const channelId = body.channelId?.trim();
-  if (!channelId || !SNOWFLAKE_RE.test(channelId)) {
-    return NextResponse.json(
-      {
-        success: false,
-        message: "channelId is required and must be a valid Discord snowflake",
-      },
-      { status: 400 }
-    );
-  }
+  const deliveryRaw =
+    typeof body.welcomeDeliveryMode === "string"
+      ? body.welcomeDeliveryMode.trim().toLowerCase()
+      : "channel";
+  const isDmTest = deliveryRaw === "dm";
 
-  const welcomeStyle = body.welcomeStyle as WelcomeStyle | undefined;
-  if (
-    welcomeStyle !== "text" &&
-    welcomeStyle !== "embed" &&
-    welcomeStyle !== "imageCard"
-  ) {
-    return NextResponse.json(
-      {
-        success: false,
-        message:
-          'welcomeStyle must be "text", "embed", or "imageCard"',
-      },
-      { status: 400 }
-    );
+  let channelId = "";
+  let welcomeStyle: WelcomeStyle | undefined;
+
+  if (!isDmTest) {
+    channelId = body.channelId?.trim() ?? "";
+    if (!channelId || !SNOWFLAKE_RE.test(channelId)) {
+      return NextResponse.json(
+        {
+          success: false,
+          message: "channelId is required and must be a valid Discord snowflake",
+        },
+        { status: 400 }
+      );
+    }
+
+    welcomeStyle = body.welcomeStyle as WelcomeStyle | undefined;
+    if (
+      welcomeStyle !== "text" &&
+      welcomeStyle !== "embed" &&
+      welcomeStyle !== "imageCard"
+    ) {
+      return NextResponse.json(
+        {
+          success: false,
+          message:
+            'welcomeStyle must be "text", "embed", or "imageCard"',
+        },
+        { status: 400 }
+      );
+    }
   }
 
   let guildsRes: Response;
@@ -212,6 +234,133 @@ export async function POST(
     Authorization: `Bot ${botToken}`,
     "Content-Type": "application/json",
   };
+
+  if (isDmTest) {
+    const dmRaw = typeof body.welcomeDmMessage === "string" ? body.welcomeDmMessage : "";
+    const content = resolveTestVariables(dmRaw).trim();
+    if (!content) {
+      return NextResponse.json(
+        {
+          success: false,
+          message: "Укажите текст сообщения в ЛС для теста",
+        },
+        { status: 400 }
+      );
+    }
+
+    let meRes: Response;
+    try {
+      meRes = await fetchOAuthUser(accessToken);
+    } catch (err) {
+      console.error("[send-test] users/@me failed:", err);
+      return NextResponse.json(
+        {
+          success: false,
+          message: "Discord временно недоступен; попробуйте снова.",
+        },
+        { status: 503 }
+      );
+    }
+
+    if (!meRes.ok) {
+      const discordError = await readDiscordErrorText(meRes);
+      return NextResponse.json(
+        {
+          success: false,
+          message: "Не удалось получить профиль для теста ЛС",
+          discordError,
+        },
+        { status: meRes.status >= 500 ? 502 : 500 }
+      );
+    }
+
+    const me = (await meRes.json()) as { id?: string };
+    const recipientId = typeof me.id === "string" && SNOWFLAKE_RE.test(me.id) ? me.id : "";
+    if (!recipientId) {
+      return NextResponse.json(
+        {
+          success: false,
+          message: "Не удалось определить пользователя для теста ЛС",
+        },
+        { status: 500 }
+      );
+    }
+
+    let dmChannelRes: Response;
+    try {
+      dmChannelRes = await discordFetch("/users/@me/channels", {
+        method: "POST",
+        headers: botHeadersJson,
+        body: JSON.stringify({ recipient_id: recipientId }),
+      });
+    } catch (err) {
+      console.error("[send-test] create DM failed:", err);
+      return NextResponse.json(
+        {
+          success: false,
+          message: "Ошибка сети при создании ЛС",
+        },
+        { status: 503 }
+      );
+    }
+
+    if (!dmChannelRes.ok) {
+      const discordError = await readDiscordErrorText(dmChannelRes);
+      return NextResponse.json(
+        {
+          success: false,
+          message:
+            "Не удалось отправить тест в ЛС (возможно, у вас закрыты личные сообщения от участников серверов)",
+          discordError,
+        },
+        { status: dmChannelRes.status >= 500 ? 502 : dmChannelRes.status }
+      );
+    }
+
+    const dmCh = (await dmChannelRes.json()) as { id?: string };
+    const dmChannelId = typeof dmCh.id === "string" ? dmCh.id : "";
+    if (!dmChannelId) {
+      return NextResponse.json(
+        { success: false, message: "Discord не вернул канал ЛС" },
+        { status: 502 }
+      );
+    }
+
+    let msgRes: Response;
+    try {
+      msgRes = await discordFetch(`/channels/${dmChannelId}/messages`, {
+        method: "POST",
+        headers: botHeadersJson,
+        body: JSON.stringify({ content }),
+      });
+    } catch (err) {
+      console.error("[send-test] DM message send failed:", err);
+      return NextResponse.json(
+        {
+          success: false,
+          message: "Ошибка сети при отправке в ЛС",
+        },
+        { status: 503 }
+      );
+    }
+
+    if (!msgRes.ok) {
+      const discordError = await readDiscordErrorText(msgRes);
+      return NextResponse.json(
+        {
+          success: false,
+          message: "Не удалось отправить тест в ЛС",
+          discordError,
+        },
+        { status: msgRes.status >= 500 ? 502 : msgRes.status }
+      );
+    }
+
+    return NextResponse.json({
+      success: true,
+      message: "Тестовое сообщение отправлено вам в личку от бота",
+    });
+  }
 
   if (welcomeStyle === "imageCard") {
     const icRaw = body.imageCard && typeof body.imageCard === "object" ? body.imageCard : {};
