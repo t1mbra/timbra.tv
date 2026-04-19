@@ -12,22 +12,12 @@ export function AppFooter() {
       aria-label="Нижний колонтитул"
     >
       <div className="app-shell-container px-6 py-4">
-        <div className="hidden grid-cols-[1fr_auto_1fr] items-end gap-x-8 gap-y-3 md:grid">
-          <p className="justify-self-start text-left text-[11px] font-medium leading-none tracking-[0.01em]">
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between sm:gap-6">
+          <p className="text-[11px] font-medium leading-none tracking-[0.01em]">
             {homeCopy.copyrightLine}
           </p>
-          <div className="flex justify-center">
-            <img
-              src="/timbra-logo.svg"
-              alt=""
-              width={64}
-              height={22}
-              decoding="async"
-              className="h-auto w-16 object-contain opacity-90"
-            />
-          </div>
           <p
-            className="justify-self-end text-right text-[11px] font-medium leading-none tabular-nums tracking-[0.02em]"
+            className="text-[11px] font-medium leading-none tabular-nums tracking-[0.02em] sm:text-right"
             aria-label={`Версия ${version}`}
           >
             {versionLine}

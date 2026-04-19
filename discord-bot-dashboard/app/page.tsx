@@ -168,6 +168,11 @@ export default function LandingPage() {
     )[0]!.id;
   }, [connectedGuilds]);
 
+  const targetDashboardGuildName = useMemo(() => {
+    if (!targetDashboardGuildId) return null;
+    return connectedGuilds.find((g) => g.id === targetDashboardGuildId)?.name ?? null;
+  }, [connectedGuilds, targetDashboardGuildId]);
+
   const botName = bootstrap?.bot?.name || "Timbra Bot";
   const viewerName = bootstrap?.viewer?.name ?? null;
   const bootstrapLoading = bootstrap === null;
@@ -245,7 +250,7 @@ export default function LandingPage() {
 
       <div className="relative z-[1] flex min-h-0 flex-1 flex-col px-[clamp(1.25rem,5vw,5rem)] pb-6 pt-6">
         <div className="flex w-full flex-1 flex-col items-center justify-center">
-          <div className="w-full max-w-[min(100%,28rem)]">
+          <div className="w-full max-w-[min(100%,34rem)]">
             {viewerName ? (
               <div className="mb-4 flex justify-end">
                 <UserMenu
@@ -278,7 +283,17 @@ export default function LandingPage() {
 
               <p className="mx-auto mb-8 max-w-prose text-zinc-300">{homeCopy.tagline}</p>
 
-              <div className="flex flex-col items-center gap-3">{ctaBlock}</div>
+              <div className="flex flex-col items-center gap-3">
+                {ctaBlock}
+                {viewerName &&
+                !bootstrapLoading &&
+                !guildsLoading &&
+                !guildsError &&
+                targetDashboardGuildId &&
+                targetDashboardGuildName ? (
+                  <p className="text-sm text-zinc-400/85">{homeCopy.serverLine(targetDashboardGuildName)}</p>
+                ) : null}
+              </div>
             </section>
           </div>
         </div>
