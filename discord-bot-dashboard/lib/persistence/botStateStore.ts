@@ -8,6 +8,10 @@ function backend() {
     : jsonBotStateStore;
 }
 
+export function getBotStatePathForDebug(): string {
+  return backend().getBotStatePathForDebug();
+}
+
 export async function getConnectedGuildIds(): Promise<Set<string>> {
   return backend().getConnectedGuildIds();
 }

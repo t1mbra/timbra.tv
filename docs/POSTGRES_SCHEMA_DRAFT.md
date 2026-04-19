@@ -1,41 +1,30 @@
-# Черновик схемы Postgres (Timbrabot)
+# Схема Postgres (Timbrabot)
 
-Документ описывает возможное будущее состояние после миграции с JSON. **Не является миграцией и не используется кодом MVP.**
+Используется при **`PERSISTENCE_DRIVER=postgres`**. DDL для создания таблиц: **`docs/sql/001_init_timbrabot.sql`**.
 
 ## Таблица `guild_configs`
 
-Хранение пер-серверного welcome / autorole конфигурации (аналог `shared-data/config.json` → `guilds[guildId]`).
+Пер-серверный welcome / autorole конфиг (аналог `shared-data/config.json` → `guilds[guildId]`).
 
-| Колонка | Тип (черновик) | Примечание |
-|---------|----------------|------------|
+| Колонка | Тип | Примечание |
+|---------|-----|------------|
 | `guild_id` | `TEXT` PK | Discord snowflake |
-| `config` | `JSONB` | Весь объект конфига гильдии (как в JSON сейчас) |
-| `updated_at` | `TIMESTAMPTZ` | Опционально для аудита |
+| `config` | `JSONB` NOT NULL | Объект конфига гильдии |
+| `updated_at` | `TIMESTAMPTZ` NOT NULL DEFAULT now() | |
+
+Запись полного снимка (`writeRawConfig`): транзакция `DELETE` всех строк + `INSERT` по каждой гильдии (эквивалент перезаписи файла). Одиночное сохранение: `INSERT ... ON CONFLICT DO UPDATE`.
 
 ## Таблица `bot_guild_state`
 
-Множество гильдий, где бот состоит (аналог `shared-data/bot-state.json` → `guildIds` / legacy `guilds[]`).
+Множество гильдий, где бот состоит (аналог `bot-state.json` → массив `guildIds`).
 
-| Колонка | Тип (черновик) | Примечание |
-|---------|----------------|------------|
+| Колонка | Тип | Примечание |
+|---------|-----|------------|
 | `guild_id` | `TEXT` PK | Discord snowflake |
-| `updated_at` | `TIMESTAMPTZ` | Синхронизация / TTL опционально |
+| `updated_at` | `TIMESTAMPTZ` NOT NULL DEFAULT now() | |
 
-Альтернатива: одна строка `singleton` с массивом `guild_ids TEXT[]` и полем `updated_at` — ближе к текущему файлу `version` + `updatedAt` + `guildIds`.
+Обновление от бота: транзакция `DELETE` всех строк + `INSERT` по каждому id (дедупликация на вставке).
 
-## Таблица `guild_assets`
+## Таблица `guild_assets` (будущее)
 
-Бинарные/файловые артефакты (аналог `shared-data/assets/guilds/{guildId}/…`).
-
-| Колонка | Тип (черновик) | Примечание |
-|---------|----------------|------------|
-| `id` | `UUID` PK | |
-| `guild_id` | `TEXT` | FK логически к `guild_configs` |
-| `kind` | `TEXT` | Например `welcome_card_background` |
-| `content_type` | `TEXT` | MIME |
-| `bytes` | `BYTEA` или внешнее хранилище (S3) | |
-| `created_at` | `TIMESTAMPTZ` | |
-
-## Индексы и ограничения (идеи)
-
-- Уникальность `(guild_id, kind)` для «один активный фон на гильдию», если модель такая же, как у файлов на диске.
+Бинарные артефакты (фоны карточек и т.д.) пока остаются в **`shared-data/`** / файлах; отдельная таблица под S3/BYTEA не реализована в текущем драйвере.

@@ -8,4 +8,4 @@ export async function readBotConnectedGuildIds(): Promise<Set<string>> {
   return getConnectedGuildIds();
 }
 
-export { getBotStatePathForDebug } from "@/lib/persistence/jsonBotStateStore";
+export { getBotStatePathForDebug } from "@/lib/persistence/botStateStore";

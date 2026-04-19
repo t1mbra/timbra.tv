@@ -1,5 +1,6 @@
 const fs = require("fs/promises");
 const path = require("path");
+const { guildConfigFromShared } = require("./guildConfigFromShared");
 
 /**
  * @typedef {{ guilds?: Record<string, unknown> }} SharedConfigShape
@@ -53,10 +54,7 @@ async function readRawConfig() {
  * @returns {Record<string, unknown> | null}
  */
 function getGuildConfig(shared, guildId) {
-  if (!shared || !guildId || typeof guildId !== "string") return null;
-  const g = shared.guilds?.[guildId];
-  if (!g || typeof g !== "object" || Array.isArray(g)) return null;
-  return /** @type {Record<string, unknown>} */ (g);
+  return guildConfigFromShared(shared, guildId);
 }
 
 /**

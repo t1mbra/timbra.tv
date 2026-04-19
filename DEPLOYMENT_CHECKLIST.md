@@ -23,6 +23,14 @@
 - [ ] Запустить дашборд в production (например `npm start` после сборки).
 - [ ] Запустить бота: в `discord-bot/` — `node index.js` (или скрипт из `package.json`).
 
+## Postgres (если `PERSISTENCE_DRIVER=postgres`)
+
+- [ ] Выполнить DDL: **`docs/sql/001_init_timbrabot.sql`** на целевой БД.
+- [ ] Задать **`DATABASE_URL`** (и при необходимости **`PG_SSL`**) в окружении бота и дашборда.
+- [ ] (Опционально) Перенести конфиги из JSON: `DATABASE_URL=... node scripts/migrate-json-config-to-postgres.js`.
+- [ ] Smoke: `PERSISTENCE_DRIVER=postgres` + `DATABASE_URL` → `node scripts/smoke-postgres-config.js` и `node scripts/smoke-postgres-bot-state.js`.
+- [ ] Помнить: **ассеты и шрифты** остаются в `shared-data/` (см. `DEPLOYMENT_ARCHITECTURE.md`).
+
 ## Проверки
 
 - [ ] Открыть `/servers` — список серверов и статус бота отображаются корректно.
