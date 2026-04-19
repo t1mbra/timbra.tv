@@ -1,11 +1,9 @@
-﻿import path from "node:path";
-
-import { cookies } from "next/headers";
+﻿import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 
 import { getUserManageableGuildsWithBotState } from "@/lib/getUserManageableGuildsWithBotState";
 import { listAvailableWelcomeCardFontKeys } from "@/lib/resolveImageCardFont";
-import { resolveSharedDataDir } from "@/lib/resolveSharedDataDir";
+import { resolveWelcomeCardFontDir } from "@/lib/resolveWelcomeCardFontDir";
 
 import { DashboardGuildPageClient } from "./DashboardGuildPageClient";
 
@@ -35,7 +33,7 @@ export default async function DashboardGuildPage({
 
   const connectedGuilds = result.guilds.filter((g) => g.botConnected);
 
-  const fontDir = path.join(resolveSharedDataDir(), "fonts", "welcome-card");
+  const fontDir = resolveWelcomeCardFontDir();
   const availableWelcomeCardFontKeys = listAvailableWelcomeCardFontKeys(fontDir);
 
   return (

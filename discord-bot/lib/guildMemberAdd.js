@@ -3,6 +3,7 @@ const path = require("path");
 const { EmbedBuilder, AttachmentBuilder } = require("discord.js");
 const { generateWelcomeImageCardPngBuffer } = require("./welcomeImageCard");
 const { resolveSharedDataDir } = require("./resolveSharedDataDir");
+const { resolveWelcomeCardFontDir } = require("./resolveWelcomeCardFontDir");
 const configStore = require("./persistence/configStore");
 const { configFilePath } = require("./persistence/jsonConfigStore");
 
@@ -314,8 +315,14 @@ async function sendWelcome(member, config) {
         ? /** @type {Record<string, unknown>} */ (icRaw)
         : {};
 
-    const titleRaw = typeof ic.title === "string" ? ic.title : "Добро пожаловать";
-    const subtitleRaw = typeof ic.subtitle === "string" ? ic.subtitle : "";
+    const titleRaw =
+      typeof ic.title === "string" && ic.title.trim()
+        ? ic.title.trim()
+        : "Добро пожаловать";
+    const subtitleRaw =
+      typeof ic.subtitle === "string" && ic.subtitle.trim()
+        ? ic.subtitle.trim()
+        : "Новый участник";
     const descRaw = typeof ic.description === "string" ? ic.description : "";
     let bgMode = "gradient";
     if (ic.backgroundMode === "solid") bgMode = "solid";
@@ -370,7 +377,7 @@ async function sendWelcome(member, config) {
     const subtitleStyle = pickFieldStyle(ic.subtitleStyle);
 
     const sharedRoot = resolveSharedDataDir();
-    const fontDir = path.join(sharedRoot, "fonts", "welcome-card");
+    const fontDir = resolveWelcomeCardFontDir();
     const backgroundImagePath = resolveImageCardBackgroundPath(sharedRoot, ic.backgroundImage);
 
     const displayName = member.displayName || member.user.username;

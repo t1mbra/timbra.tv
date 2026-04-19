@@ -247,9 +247,14 @@ export function mergeImageCard(
     };
   }
 
+  const titleTrimmed = typeof o.title === "string" ? o.title.trim() : "";
+
   return {
-    title: typeof o.title === "string" ? o.title : defaults.title,
-    subtitle: typeof o.subtitle === "string" ? o.subtitle : defaults.subtitle,
+    title: titleTrimmed ? titleTrimmed : defaults.title,
+    subtitle:
+      typeof o.subtitle === "string"
+        ? o.subtitle.trim() || defaults.subtitle
+        : defaults.subtitle,
     description: typeof o.description === "string" ? o.description : defaults.description,
     fontFamily,
     textColor,

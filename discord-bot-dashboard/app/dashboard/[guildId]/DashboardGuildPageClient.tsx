@@ -3191,7 +3191,7 @@ export function DashboardGuildPageClient({
                       <div
                         className={`welcome-settings-stack${
                           !welcomeEnabled
-                            ? " pointer-events-none opacity-[0.58] saturate-[0.92]"
+                            ? " pointer-events-none opacity-[0.42] saturate-[0.88] contrast-[0.92]"
                             : ""
                         }`}
                       >
@@ -3200,11 +3200,14 @@ export function DashboardGuildPageClient({
                       className="welcome-settings-module px-4 py-4 sm:px-5 sm:py-4"
                     >
                       <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between sm:gap-4">
-                        <div className="min-w-0">
+                        <div className="min-w-0 flex-1">
                           <p className="ds-kicker">{welcomeModuleCopy.deliverySectionTitle}</p>
+                          <p className="welcome-help-text mt-1.5 max-w-prose">
+                            {welcomeModuleCopy.deliveryChannelSelectHint}
+                          </p>
                         </div>
                         <div
-                          className="flex w-full flex-wrap gap-0.5 rounded-full bg-black/[0.26] p-0.5 sm:w-auto sm:flex-nowrap"
+                          className="flex w-full shrink-0 flex-wrap gap-0.5 rounded-full bg-black/[0.26] p-0.5 sm:w-auto sm:flex-nowrap"
                           role="tablist"
                           aria-label={welcomeModuleCopy.deliveryModeTablistAria}
                         >
@@ -3230,18 +3233,15 @@ export function DashboardGuildPageClient({
                           </button>
                         </div>
                       </div>
-                      <div className="mt-3">
-                        <p className="welcome-help-text">{welcomeModuleCopy.deliveryChannelSelectHint}</p>
-                        <div className="mt-2">
-                          <CustomSelect
-                            value={channelId}
-                            options={channelOptions}
-                            placeholder={resourcesLoading ? "Загрузка каналов..." : "Не выбран"}
-                            disabled={resourcesLoading}
-                            onChange={setChannelId}
-                            ariaLabel="Канал для приветствия"
-                          />
-                        </div>
+                      <div className="mt-4">
+                        <CustomSelect
+                          value={channelId}
+                          options={channelOptions}
+                          placeholder={resourcesLoading ? "Загрузка каналов..." : "Не выбран"}
+                          disabled={resourcesLoading}
+                          onChange={setChannelId}
+                          ariaLabel="Канал для приветствия"
+                        />
                       </div>
                       {!resourcesLoading && resourcesError ? (
                         <p className="mt-2.5 text-sm text-rose-400">{resourcesError}</p>
@@ -4639,11 +4639,11 @@ export function DashboardGuildPageClient({
                     {!welcomeEnabled ? (
                       <button
                         type="button"
-                        className="absolute inset-0 z-[5] flex cursor-pointer flex-col items-center justify-center gap-2 bg-transparent px-5 text-center outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)] focus-visible:ring-offset-2 focus-visible:ring-offset-[rgba(9,9,15,0.96)]"
+                        className="absolute inset-0 z-[5] flex cursor-pointer flex-col items-center justify-center gap-2 bg-zinc-950/55 px-5 text-center outline-none backdrop-blur-[2px] focus-visible:ring-2 focus-visible:ring-[var(--ring)] focus-visible:ring-offset-2 focus-visible:ring-offset-[rgba(9,9,15,0.96)]"
                         aria-label={welcomeModuleCopy.welcomeDisabledOverlayHint}
                         onClick={() => setWelcomeEnabled(true)}
                       >
-                        <span className="max-w-sm text-[12px] font-normal leading-snug text-zinc-400/95">
+                        <span className="max-w-sm text-[13px] font-medium leading-snug text-zinc-100/95 drop-shadow-[0_1px_8px_rgba(0,0,0,0.55)]">
                           {welcomeModuleCopy.welcomeDisabledOverlayHint}
                         </span>
                       </button>

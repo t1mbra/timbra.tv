@@ -1,21 +1,16 @@
 import { NextResponse } from "next/server";
-import path from "node:path";
 
-import {
-  mergeImageCard,
-  type ImageCardGuildConfigMerged,
-} from "@/lib/mergeImageCardConfig";
+import { mergeImageCard } from "@/lib/mergeImageCardConfig";
 import type { GuildConfig, RootConfig } from "@/lib/persistence/configTypes";
 import {
   readRawConfig,
   writeRawConfig,
 } from "@/lib/persistence/configStore";
 import { listAvailableWelcomeCardFontKeys } from "@/lib/resolveImageCardFont";
-import { resolveSharedDataDir } from "@/lib/resolveSharedDataDir";
+import { resolveWelcomeCardFontDir } from "@/lib/resolveWelcomeCardFontDir";
 
 function availableImageCardFontKeys() {
-  const fontDir = path.join(resolveSharedDataDir(), "fonts", "welcome-card");
-  return listAvailableWelcomeCardFontKeys(fontDir);
+  return listAvailableWelcomeCardFontKeys(resolveWelcomeCardFontDir());
 }
 
 const defaultGuildConfig: GuildConfig = {

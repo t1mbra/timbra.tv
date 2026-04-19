@@ -9,28 +9,29 @@ import {
   type ImageCardFontKey,
 } from "./welcomeCardConstants";
 
-let registered = false;
+const registeredDirs = new Set<string>();
 
 /**
- * Регистрирует TTF из `fontDir` для @napi-rs/canvas (идемпотентно).
- * При ошибке отдельного файла — предупреждение, без throw.
+ * Регистрирует TTF из `fontDir` для @napi-rs/canvas (идемпотентно по пути).
+ * Разные каталоги обрабатываются отдельно; пустой каталог не блокирует следующий.
  */
 export function ensureWelcomeCardFontsRegistered(fontDir: string): void {
-  if (registered) return;
-  for (const key of IMAGE_CARD_FONT_KEYS) {
-    const file = IMAGE_CARD_FONT_FILES[key];
+  const key = path.resolve(fontDir);
+  if (registeredDirs.has(key)) return;
+  for (const fontKey of IMAGE_CARD_FONT_KEYS) {
+    const file = IMAGE_CARD_FONT_FILES[fontKey];
     const full = path.join(fontDir, file);
     if (!existsSync(full)) {
       console.warn("[welcomeCard] font file missing:", full);
       continue;
     }
     try {
-      GlobalFonts.registerFromPath(full, IMAGE_CARD_CANVAS_FAMILY[key]);
+      GlobalFonts.registerFromPath(full, IMAGE_CARD_CANVAS_FAMILY[fontKey]);
     } catch (e) {
-      console.warn("[welcomeCard] registerFromPath failed:", key, e);
+      console.warn("[welcomeCard] registerFromPath failed:", fontKey, e);
     }
   }
-  registered = true;
+  registeredDirs.add(key);
 }
 
 export function canvasFontFamilyName(key: ImageCardFontKey): string {

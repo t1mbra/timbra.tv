@@ -150,10 +150,11 @@ function canvasFontString(style, weight, sizePx, ff) {
   return `${st} ${w} ${sizePx}px "${ff}", system-ui, sans-serif`;
 }
 
-let fontsRegistered = false;
+const registeredFontDirs = new Set();
 
 function ensureFonts(fontDir) {
-  if (fontsRegistered) return;
+  const dirKey = path.resolve(fontDir);
+  if (registeredFontDirs.has(dirKey)) return;
   for (const key of Object.keys(FONT_FILES)) {
     const full = path.join(fontDir, FONT_FILES[key]);
     if (existsSync(full)) {
@@ -166,7 +167,7 @@ function ensureFonts(fontDir) {
       console.warn("[welcomeImageCard] font file missing:", full);
     }
   }
-  fontsRegistered = true;
+  registeredFontDirs.add(dirKey);
 }
 
 function canvasFamily(key) {

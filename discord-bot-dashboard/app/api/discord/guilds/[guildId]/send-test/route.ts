@@ -6,6 +6,7 @@ import { discordFetch } from "@/lib/discordFetch";
 import { resolveImageCardBackgroundAbsolutePath } from "@/lib/resolveImageCardBackgroundPath";
 import { mergeImageCard } from "@/lib/mergeImageCardConfig";
 import { resolveSharedDataDir } from "@/lib/resolveSharedDataDir";
+import { resolveWelcomeCardFontDir } from "@/lib/resolveWelcomeCardFontDir";
 import { listAvailableWelcomeCardFontKeys } from "@/lib/resolveImageCardFont";
 import { generateWelcomeImageCardPngBuffer } from "@/lib/welcomeImageCard";
 import { DEFAULT_OVERLAY_COLOR, DEFAULT_OVERLAY_OPACITY } from "@/lib/welcomeCardConstants";
@@ -216,7 +217,7 @@ export async function POST(
   if (welcomeStyle === "imageCard") {
     const icRaw = body.imageCard && typeof body.imageCard === "object" ? body.imageCard : {};
     const sharedRoot = resolveSharedDataDir();
-    const fontDirForMerge = path.join(sharedRoot, "fonts", "welcome-card");
+    const fontDirForMerge = resolveWelcomeCardFontDir();
     const availableFontKeys = listAvailableWelcomeCardFontKeys(fontDirForMerge);
     const ic = mergeImageCard(icRaw, { availableFontKeys });
 
