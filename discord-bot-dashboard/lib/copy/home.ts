@@ -13,4 +13,5 @@ export const homeCopy = {
   brandKicker: "Discord-бот",
   /** Показывается рядом с номером версии; при локализации можно заменить порядок в шаблоне. */
   versionProductName: "Timbrabot",
+  copyrightLine: "© 2026 timbra.tv",
 } as const;

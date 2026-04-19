@@ -1,6 +1,8 @@
+import { cookies } from "next/headers";
 import { NextResponse } from "next/server";
 
 import { getUserManageableGuildsWithBotState } from "@/lib/getUserManageableGuildsWithBotState";
+import { LAST_GUILD_COOKIE_NAME } from "@/lib/lastGuildCookie";
 import { publicAbsoluteUrl } from "@/lib/resolvePublicOrigin";
 
 type DiscordTokenResponse = {
@@ -78,13 +80,22 @@ export async function GET(request: Request) {
 
   const user = (await userRes.json()) as DiscordUser;
 
-  /** Тот же порядок, что в GET /api/discord/guilds: owner выше, затем имя (ru). Берём первую с botConnected. */
+  /** Подключённые гильдии в том же порядке, что GET /api/discord/guilds. Приоритет: cookie timbrabot_last_guild_id, если валиден. */
   let nextPath = "/servers";
   const guildsResult = await getUserManageableGuildsWithBotState(tokenData.access_token);
   if (guildsResult.status === "ok") {
     const firstConnected = guildsResult.guilds.find((g) => g.botConnected);
     if (firstConnected) {
-      nextPath = `/dashboard/${firstConnected.id}`;
+      const cookieStore = await cookies();
+      const rememberedRaw = cookieStore.get(LAST_GUILD_COOKIE_NAME)?.value;
+      const remembered = rememberedRaw?.trim() ?? "";
+      const rememberedOk =
+        remembered &&
+        guildsResult.guilds.some(
+          (g) => g.id === remembered && g.botConnected
+        );
+      const targetId = rememberedOk ? remembered : firstConnected.id;
+      nextPath = `/dashboard/${targetId}`;
     }
   }
 

@@ -45,6 +45,7 @@ import {
   IMAGE_CARD_W,
   imageCardPreviewScaledMetrics,
 } from "@/lib/welcomeImageCardLayout";
+import { setLastGuildCookieClient } from "@/lib/lastGuildCookie";
 import { ColorPopover } from "../../components/ColorPopover";
 import { WelcomeCardPreviewFontFaces } from "../../components/WelcomeCardPreviewFontFaces";
 import { CollapsibleSettingsSection } from "../../components/CollapsibleSettingsSection";
@@ -1520,6 +1521,11 @@ export function DashboardGuildPageClient({
   const [embedImageZoneActive, setEmbedImageZoneActive] = useState(false);
   const guildName = initialGuildName;
   const guildIconUrl = initialGuildIconUrl;
+
+  useEffect(() => {
+    setLastGuildCookieClient(guildId);
+  }, [guildId]);
+
   /** Инкрементируется при смене гильдии / отмене запроса ресурсов — чтобы finally не снимал loading с чужого запроса */
   const resourcesFetchGenerationRef = useRef(0);
   const welcomePickerAnchorRefs = useRef<Partial<Record<PickerKind, HTMLDivElement | null>>>(

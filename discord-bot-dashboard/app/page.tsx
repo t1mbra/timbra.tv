@@ -4,7 +4,6 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { UserMenu } from "./components/usermenu";
 import { homeCopy } from "@/lib/copy/home";
-import { getAppVersionDisplay } from "@/lib/appVersion";
 
 type DashboardBootstrap = {
   viewer: {
@@ -62,8 +61,6 @@ export default function LandingPage() {
   const [guildsLoading, setGuildsLoading] = useState(false);
   const [guildsError, setGuildsError] = useState("");
   const [guildsRetryKey, setGuildsRetryKey] = useState(0);
-
-  const appVersion = useMemo(() => getAppVersionDisplay(), []);
 
   useEffect(() => {
     let cancelled = false;
@@ -243,65 +240,48 @@ export default function LandingPage() {
   })();
 
   return (
-    <main className="landing-page-root relative flex min-h-0 flex-1 flex-col items-center justify-center overflow-hidden px-[clamp(1.25rem,5vw,5rem)] py-6 text-white">
+    <main className="landing-page-root relative flex min-h-0 w-full flex-1 flex-col text-white">
       <div className="landing-ambient pointer-events-none absolute inset-0" aria-hidden />
 
-      <div className="relative z-[1] w-full max-w-[min(100%,28rem)]">
-        {viewerName ? (
-          <div className="mb-4 flex justify-end">
-            <UserMenu
-              viewerName={viewerName}
-              avatarUrl={bootstrap?.viewer?.avatarUrl ?? null}
-              idPrefix="landing"
-            />
+      <div className="relative z-[1] flex min-h-0 flex-1 flex-col px-[clamp(1.25rem,5vw,5rem)] pb-6 pt-6">
+        <div className="flex w-full flex-1 flex-col items-center justify-center">
+          <div className="w-full max-w-[min(100%,28rem)]">
+            {viewerName ? (
+              <div className="mb-4 flex justify-end">
+                <UserMenu
+                  viewerName={viewerName}
+                  avatarUrl={bootstrap?.viewer?.avatarUrl ?? null}
+                  idPrefix="landing"
+                />
+              </div>
+            ) : null}
+
+            <section
+              className="ds-card rounded-3xl px-8 py-10 text-center backdrop-blur"
+              aria-labelledby="landing-title"
+            >
+              <div className="mb-8 flex flex-col items-center justify-center gap-6">
+                <Link href="/" aria-label="На главную страницу">
+                  <Avatar
+                    src={bootstrap?.bot?.avatarUrl ?? null}
+                    alt={botName}
+                    fallback={botName}
+                  />
+                </Link>
+                <div>
+                  <p className="ds-kicker">{homeCopy.brandKicker}</p>
+                  <h1 id="landing-title" className="ds-heading mt-2 text-3xl">
+                    {botName}
+                  </h1>
+                </div>
+              </div>
+
+              <p className="mx-auto mb-8 max-w-prose text-zinc-300">{homeCopy.tagline}</p>
+
+              <div className="flex flex-col items-center gap-3">{ctaBlock}</div>
+            </section>
           </div>
-        ) : null}
-
-        <section
-          className="ds-card rounded-3xl px-8 py-10 text-center backdrop-blur"
-          aria-labelledby="landing-title"
-        >
-          <div className="mb-8 flex flex-col items-center justify-center gap-6">
-            <Link href="/" aria-label="На главную страницу">
-              <Avatar
-                src={bootstrap?.bot?.avatarUrl ?? null}
-                alt={botName}
-                fallback={botName}
-              />
-            </Link>
-            <div>
-              <p className="ds-kicker">{homeCopy.brandKicker}</p>
-              <h1 id="landing-title" className="ds-heading mt-2 text-3xl">
-                {botName}
-              </h1>
-            </div>
-          </div>
-
-          <p className="mx-auto mb-8 max-w-prose text-zinc-300">{homeCopy.tagline}</p>
-
-          <div className="flex flex-col items-center gap-3">{ctaBlock}</div>
-
-          <p
-            className="mt-6 text-center text-[11px] font-medium tabular-nums tracking-[0.02em] text-zinc-500/75"
-            aria-label={`Версия ${appVersion}`}
-          >
-            {homeCopy.versionProductName} v{appVersion}
-          </p>
-
-          <div className="mt-5 flex items-center justify-center gap-2 opacity-[0.55]">
-            <img
-              src="/timbra-logo.svg"
-              alt=""
-              width={24}
-              height={24}
-              decoding="async"
-              className="h-6 w-6 shrink-0"
-            />
-            <p className="m-0 text-[11px] font-medium leading-none tracking-[0.01em] text-zinc-400/90">
-              © 2026 timbra.tv
-            </p>
-          </div>
-        </section>
+        </div>
       </div>
     </main>
   );
