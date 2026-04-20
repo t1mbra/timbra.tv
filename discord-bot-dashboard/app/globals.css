@@ -33,6 +33,10 @@
   --font-sans: var(--font-inter);
 }
 
+html {
+  background-color: var(--background);
+}
+
 body {
   background: var(--background);
   color: var(--foreground);
@@ -120,6 +124,23 @@ body {
   box-shadow: 0 1px 4px rgba(0, 0, 0, 0.45);
 }
 
+/* Градиенты дашборда: только вьюпорт, не растягиваются с высотой контента */
+.app-bg-layer {
+  position: fixed;
+  inset: 0;
+  width: 100vw;
+  min-height: 100vh;
+  min-height: 100dvh;
+  pointer-events: none;
+  z-index: 0;
+  background:
+    radial-gradient(circle at 12% 14%, rgba(128, 56, 206, 0.28), transparent 36%),
+    radial-gradient(circle at 86% 86%, rgba(128, 56, 206, 0.2), transparent 42%),
+    radial-gradient(circle at 50% -10%, rgba(255, 255, 255, 0.08), transparent 45%),
+    var(--background);
+}
+
+/* Legacy: тот же визуал, если класс останется на обёртке (предпочтительно — только .app-bg-layer) */
 .app-bg {
   background:
     radial-gradient(circle at 12% 14%, rgba(128, 56, 206, 0.28), transparent 36%),
@@ -151,14 +172,16 @@ body {
   margin-right: auto;
 }
 
+/* Стекло: градиент на всю площадь карточки (без фикс. высоты / псевдо) — без шва, мягкие стопы к низу */
 .ds-card {
   border: 1px solid var(--border-soft);
   background:
     linear-gradient(
       145deg,
-      rgba(255, 255, 255, 0.14) 0%,
-      rgba(255, 255, 255, 0.06) 18%,
-      rgba(255, 255, 255, 0.02) 40%
+      rgba(255, 255, 255, 0.12) 0%,
+      rgba(255, 255, 255, 0.05) 22%,
+      rgba(255, 255, 255, 0.02) 45%,
+      rgba(255, 255, 255, 0.008) 100%
     ),
     var(--surface-1);
   backdrop-filter: blur(22px) saturate(145%);
@@ -204,8 +227,9 @@ body {
   background:
     linear-gradient(
       155deg,
-      rgba(255, 255, 255, 0.1) 0%,
-      rgba(255, 255, 255, 0.02) 35%
+      rgba(255, 255, 255, 0.09) 0%,
+      rgba(255, 255, 255, 0.03) 38%,
+      rgba(255, 255, 255, 0.006) 100%
     ),
     var(--surface-2);
   backdrop-filter: blur(16px) saturate(140%);
@@ -218,9 +242,9 @@ body {
   background:
     linear-gradient(
       160deg,
-      rgba(255, 255, 255, 0.18) 0%,
-      rgba(255, 255, 255, 0.04) 40%,
-      rgba(255, 255, 255, 0.02) 100%
+      rgba(255, 255, 255, 0.16) 0%,
+      rgba(255, 255, 255, 0.05) 42%,
+      rgba(255, 255, 255, 0.015) 100%
     ),
     rgba(28, 27, 40, 0.58);
   box-shadow:
@@ -241,9 +265,9 @@ body {
   background:
     linear-gradient(
       160deg,
-      rgba(255, 255, 255, 0.22) 0%,
-      rgba(255, 255, 255, 0.07) 40%,
-      rgba(255, 255, 255, 0.03) 100%
+      rgba(255, 255, 255, 0.2) 0%,
+      rgba(255, 255, 255, 0.07) 42%,
+      rgba(255, 255, 255, 0.02) 100%
     ),
     rgba(32, 30, 46, 0.62);
 }
@@ -278,9 +302,9 @@ body {
   background:
     linear-gradient(
       160deg,
-      rgba(255, 255, 255, 0.18) 0%,
-      rgba(255, 255, 255, 0.04) 40%,
-      rgba(255, 255, 255, 0.02) 100%
+      rgba(255, 255, 255, 0.16) 0%,
+      rgba(255, 255, 255, 0.05) 42%,
+      rgba(255, 255, 255, 0.015) 100%
     ),
     rgba(28, 27, 40, 0.58);
 }
@@ -290,9 +314,9 @@ body {
   background:
     linear-gradient(
       165deg,
-      rgba(255, 255, 255, 0.16) 0%,
-      rgba(255, 255, 255, 0.03) 38%,
-      rgba(255, 255, 255, 0.02) 100%
+      rgba(255, 255, 255, 0.14) 0%,
+      rgba(255, 255, 255, 0.04) 36%,
+      rgba(255, 255, 255, 0.012) 100%
     ),
     rgba(14, 13, 22, 0.84);
   box-shadow:
@@ -308,9 +332,9 @@ body {
   background:
     linear-gradient(
       165deg,
-      rgba(255, 255, 255, 0.24) 0%,
-      rgba(255, 255, 255, 0.09) 34%,
-      rgba(255, 255, 255, 0.04) 100%
+      rgba(255, 255, 255, 0.2) 0%,
+      rgba(255, 255, 255, 0.07) 36%,
+      rgba(255, 255, 255, 0.025) 100%
     ),
     rgba(10, 10, 16, 0.38);
   box-shadow:
@@ -325,9 +349,9 @@ body {
   background:
     linear-gradient(
       165deg,
-      rgba(255, 255, 255, 0.16) 0%,
-      rgba(255, 255, 255, 0.05) 34%,
-      rgba(255, 255, 255, 0.02) 100%
+      rgba(255, 255, 255, 0.14) 0%,
+      rgba(255, 255, 255, 0.045) 36%,
+      rgba(255, 255, 255, 0.012) 100%
     ),
     rgba(12, 13, 20, 0.38);
   box-shadow:

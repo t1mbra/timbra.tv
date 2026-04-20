@@ -246,7 +246,7 @@ export default function LandingPage() {
 
   return (
     <main className="landing-page-root relative flex min-h-0 w-full flex-1 flex-col text-white">
-      <div className="landing-ambient pointer-events-none absolute inset-0" aria-hidden />
+      <div className="landing-ambient pointer-events-none fixed inset-0 z-0" aria-hidden />
 
       <div className="relative z-[1] flex min-h-0 flex-1 flex-col px-[clamp(1.25rem,5vw,5rem)] pb-6 pt-6">
         <div className="flex w-full flex-1 flex-col items-center justify-center">

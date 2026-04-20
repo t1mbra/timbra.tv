@@ -396,9 +396,9 @@ const SECTION_ITEMS = [
   {
     id: "welcome" as const,
     navLabel: "Приветствие",
-    heading: "Сообщения приветствия",
-    subtitle:
-      "Идеальные привествия новых участников, только прибывших на сервер!",
+    heading: "Приветствие",
+    /** Подзаголовок задаётся в клиенте с именем бота из bootstrap */
+    subtitle: "",
   },
   {
     id: "autoRoles" as const,
@@ -3409,6 +3409,11 @@ export function DashboardGuildPageClient({
 
   const activeSectionMeta = useMemo(() => getSectionItem(activeSection), [activeSection]);
   const botName = bootstrap?.bot?.name || "Bot";
+  const welcomeBlockSubtitle = useMemo(
+    () =>
+      `${botName} будет приветствовать новых участников, только прибывших на сервер`,
+    [botName]
+  );
   const viewerName = bootstrap?.viewer?.name || "Пользователь";
   const viewerAvatarUrl = bootstrap?.viewer?.avatarUrl ?? null;
   const toolbarButtonClass = (type: PickerType) =>
@@ -3549,7 +3554,7 @@ export function DashboardGuildPageClient({
                     sectionId="welcome-settings"
                     headingDomId="section-heading"
                     title={activeSectionMeta.heading}
-                    subtitle={activeSectionMeta.subtitle}
+                    subtitle={welcomeBlockSubtitle}
                     defaultOpen
                   >
                     <div className="relative overflow-hidden rounded-2xl">

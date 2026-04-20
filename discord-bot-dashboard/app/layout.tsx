@@ -19,9 +19,13 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="ru" className={`${inter.variable} h-full antialiased`}>
+    <html
+      lang="ru"
+      className={`${inter.variable} h-full antialiased [scrollbar-gutter:stable]`}
+    >
       <body className="flex min-h-screen flex-col">
-        <div className="app-bg flex min-h-screen w-full flex-1 flex-col">
+        <div className="app-bg-layer" aria-hidden />
+        <div className="relative z-[1] flex min-h-screen w-full flex-1 flex-col">
           <div className="flex min-h-0 flex-1 flex-col">{children}</div>
           <AppFooter />
         </div>
