@@ -17,9 +17,13 @@ import {
 import { useRouter } from "next/navigation";
 import { createPortal } from "react-dom";
 import {
+  ArrowDownRight,
   Bold,
+  CircleDot,
+  Droplets,
   Image as ImageIcon,
   Italic,
+  Layers,
   PaintBucket,
   Sparkles,
   Trash2,
@@ -27,7 +31,6 @@ import {
   Upload,
 } from "lucide-react";
 import { DashboardDropdownSurface } from "@/app/components/DashboardDropdownSurface";
-import { imageCardGradientEndHex } from "@/lib/imageCardGradient";
 import { welcomeCardPreviewFontStack } from "@/lib/welcomeCardPreviewFonts";
 import type { ConnectedGuildForDashboard } from "@/lib/getUserManageableGuildsWithBotState";
 import {
@@ -476,28 +479,31 @@ function IconWelcomeImagePlaceholder(props: { className?: string }) {
   );
 }
 
-/** Только превью в дашборде; в PNG не попадает */
-const IMAGE_CARD_PREVIEW_CHECKERBOARD_STYLE: CSSProperties = {
-  backgroundColor: "#131316",
-  backgroundImage: `
-    linear-gradient(45deg, rgba(255,255,255,0.055) 25%, transparent 25%),
-    linear-gradient(-45deg, rgba(255,255,255,0.055) 25%, transparent 25%),
-    linear-gradient(45deg, transparent 75%, rgba(255,255,255,0.055) 75%),
-    linear-gradient(-45deg, transparent 75%, rgba(255,255,255,0.055) 75%)`,
-  backgroundSize: "12px 12px",
-  backgroundPosition: "0 0, 0 6px, 6px -6px, -6px 0px",
-};
-
-function IconTransparentBg(props: { className?: string }) {
-  return (
-    <svg className={props.className} viewBox="0 0 24 24" aria-hidden>
-      <rect x="3" y="3" width="7.5" height="7.5" rx="1.25" fill="currentColor" opacity="0.2" />
-      <rect x="13.5" y="3" width="7.5" height="7.5" rx="1.25" fill="currentColor" opacity="0.38" />
-      <rect x="3" y="13.5" width="7.5" height="7.5" rx="1.25" fill="currentColor" opacity="0.38" />
-      <rect x="13.5" y="13.5" width="7.5" height="7.5" rx="1.25" fill="currentColor" opacity="0.2" />
-    </svg>
-  );
+function imageCardGradientPreviewLayerStyle(ic: ImageCardGuildConfigMerged): CSSProperties {
+  const o = ic.backgroundOpacity;
+  if (ic.backgroundGradientMode === "radial") {
+    return {
+      background: `radial-gradient(circle at center, ${ic.backgroundGradientStartColor}, ${ic.backgroundGradientEndColor})`,
+      opacity: o,
+    };
+  }
+  return {
+    background: `linear-gradient(135deg, ${ic.backgroundGradientStartColor}, ${ic.backgroundGradientEndColor})`,
+    opacity: o,
+  };
 }
+
+/** Только превью сплошного фона: подложка под непрозрачность слоя (не в PNG) */
+const IMAGE_CARD_SOLID_PREVIEW_BACKING: CSSProperties = {
+  backgroundColor: "#1a1a1f",
+  backgroundImage: `
+    linear-gradient(45deg, rgba(255,255,255,0.045) 25%, transparent 25%),
+    linear-gradient(-45deg, rgba(255,255,255,0.045) 25%, transparent 25%),
+    linear-gradient(45deg, transparent 75%, rgba(255,255,255,0.045) 75%),
+    linear-gradient(-45deg, transparent 75%, rgba(255,255,255,0.045) 75%)`,
+  backgroundSize: "11px 11px",
+  backgroundPosition: "0 0, 0 5.5px, 5.5px -5.5px, -5.5px 0px",
+};
 
 function IconTrashCompact(props: { className?: string }) {
   return (
@@ -2774,7 +2780,7 @@ export function DashboardGuildPageClient({
   const handleImageCardBgRemove = () => {
     const next: ImageCardConfig = {
       ...imageCard,
-      backgroundMode: "transparent",
+      backgroundMode: "solid",
       backgroundImageDataUrl: "",
       backgroundImage: { enabled: false, path: "", filename: undefined },
     };
@@ -4073,16 +4079,32 @@ export function DashboardGuildPageClient({
                             document.body
                           )}
                         <div
-                          className="rounded-2xl border border-white/[0.08] bg-white/[0.035] px-2.5 py-2 shadow-[inset_0_1px_0_rgba(255,255,255,0.06)] backdrop-blur-md sm:px-3.5 sm:py-2.5"
+                          className="min-h-[44px] rounded-[24px] border border-white/[0.08] bg-white/[0.035] px-3 py-2 shadow-[inset_0_1px_0_rgba(255,255,255,0.06)] backdrop-blur-md"
                           role="toolbar"
                           aria-label="Фон карточки приветствия"
                         >
-                          <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
+                          <div className="flex flex-nowrap items-center gap-2 overflow-x-auto [scrollbar-width:thin]">
                             <div
-                              className="inline-flex items-center gap-0.5 rounded-full bg-black/[0.22] p-0.5"
+                              className="inline-flex shrink-0 items-center gap-0.5 rounded-full bg-black/[0.22] p-0.5"
                               role="group"
                               aria-label="Режим фона"
                             >
+                              <button
+                                type="button"
+                                aria-label="Сплошной"
+                                title="Сплошной"
+                                aria-pressed={imageCard.backgroundMode === "solid"}
+                                onClick={() =>
+                                  setImageCard((c) => ({ ...c, backgroundMode: "solid" }))
+                                }
+                                className={`inline-flex size-8 items-center justify-center rounded-full transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)] ${
+                                  imageCard.backgroundMode === "solid"
+                                    ? "bg-white/[0.16] text-zinc-50"
+                                    : "text-zinc-500 hover:text-zinc-300"
+                                }`}
+                              >
+                                <PaintBucket className="size-4" strokeWidth={1.75} aria-hidden />
+                              </button>
                               <button
                                 type="button"
                                 aria-label="Градиент"
@@ -4101,22 +4123,6 @@ export function DashboardGuildPageClient({
                               </button>
                               <button
                                 type="button"
-                                aria-label="Сплошной цвет"
-                                title="Сплошной цвет"
-                                aria-pressed={imageCard.backgroundMode === "solid"}
-                                onClick={() =>
-                                  setImageCard((c) => ({ ...c, backgroundMode: "solid" }))
-                                }
-                                className={`inline-flex size-8 items-center justify-center rounded-full transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)] ${
-                                  imageCard.backgroundMode === "solid"
-                                    ? "bg-white/[0.16] text-zinc-50"
-                                    : "text-zinc-500 hover:text-zinc-300"
-                                }`}
-                              >
-                                <PaintBucket className="size-4" strokeWidth={1.75} aria-hidden />
-                              </button>
-                              <button
-                                type="button"
                                 aria-label="Изображение"
                                 title="Изображение"
                                 aria-pressed={imageCard.backgroundMode === "image"}
@@ -4131,83 +4137,138 @@ export function DashboardGuildPageClient({
                               >
                                 <ImageIcon className="size-4" strokeWidth={1.75} aria-hidden />
                               </button>
-                              <button
-                                type="button"
-                                aria-label="Прозрачный фон"
-                                title="Прозрачный фон"
-                                aria-pressed={imageCard.backgroundMode === "transparent"}
-                                onClick={() =>
-                                  setImageCard((c) => ({ ...c, backgroundMode: "transparent" }))
-                                }
-                                className={`inline-flex size-8 items-center justify-center rounded-full transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)] ${
-                                  imageCard.backgroundMode === "transparent"
-                                    ? "bg-white/[0.16] text-zinc-50"
-                                    : "text-zinc-500 hover:text-zinc-300"
-                                }`}
-                              >
-                                <IconTransparentBg className="size-4 text-current" />
-                              </button>
                             </div>
-                            {imageCard.backgroundMode === "image" ? (
-                              <div className="flex flex-wrap items-center gap-1.5">
-                                <input
-                                  ref={imageCardBgFileInputRef}
-                                  type="file"
-                                  accept="image/png,image/jpeg,image/webp"
-                                  className="hidden"
-                                  onChange={handleImageCardBgFile}
-                                />
-                                <button
-                                  type="button"
-                                  disabled={imageCardBgUploadBusy}
-                                  title={imageCardHasBackgroundAsset ? "Заменить фон" : "Загрузить фон"}
-                                  aria-label={
-                                    imageCardHasBackgroundAsset ? "Заменить фон" : "Загрузить фон"
-                                  }
-                                  onClick={() => imageCardBgFileInputRef.current?.click()}
-                                  className="inline-flex size-8 items-center justify-center rounded-md border-0 bg-transparent p-0 text-white/90 shadow-none transition hover:text-white hover:opacity-85 disabled:opacity-40"
-                                >
-                                  {imageCardBgUploadBusy ? (
-                                    <span
-                                      className="size-4 animate-spin rounded-full border-2 border-white/25 border-t-white/90"
-                                      aria-hidden
-                                    />
-                                  ) : (
-                                    <Upload className="size-4" strokeWidth={1.85} aria-hidden />
-                                  )}
-                                </button>
-                                {imageCardHasBackgroundAsset ? (
-                                  <button
-                                    type="button"
-                                    title="Удалить фон"
-                                    aria-label="Удалить фон"
-                                    onClick={handleImageCardBgRemove}
-                                    className="inline-flex size-8 items-center justify-center rounded-md border-0 bg-transparent p-0 text-white/90 shadow-none transition hover:text-white hover:opacity-85"
-                                  >
-                                    <Trash2 className="size-4" strokeWidth={1.85} aria-hidden />
-                                  </button>
-                                ) : null}
-                              </div>
-                            ) : imageCard.backgroundMode === "gradient" ||
-                              imageCard.backgroundMode === "solid" ? (
-                              <ColorPopover
-                                label="Цвет фона"
-                                triggerTitle="Цвет фона"
-                                value={imageCard.backgroundColor}
-                                onChange={(hex) =>
-                                  setImageCard((c) => ({ ...c, backgroundColor: hex }))
-                                }
-                                avoidRect={imageCardTextBandRect}
-                                zIndex={260}
-                              />
-                            ) : null}
-                            {imageCard.backgroundMode !== "transparent" ? (
+
+                            {imageCard.backgroundMode === "solid" ? (
                               <>
-                                <label htmlFor="image-card-bg-opacity-tb" className="sr-only">
+                                <div className="h-4 w-px shrink-0 bg-white/10" aria-hidden />
+                                <ColorPopover
+                                  label="Цвет фона"
+                                  triggerTitle="Цвет фона"
+                                  value={imageCard.backgroundColor}
+                                  onChange={(hex) =>
+                                    setImageCard((c) => ({ ...c, backgroundColor: hex }))
+                                  }
+                                  avoidRect={imageCardTextBandRect}
+                                  zIndex={260}
+                                />
+                                <label htmlFor="ic-bg-op-solid" className="sr-only">
                                   Непрозрачность фона
                                 </label>
+                                <span
+                                  className="inline-flex size-8 shrink-0 items-center justify-center rounded-full text-zinc-300"
+                                  title="Непрозрачность фона"
+                                  aria-hidden
+                                >
+                                  <Droplets className="size-4" strokeWidth={1.8} />
+                                </span>
                                 <input
-                                  id="image-card-bg-opacity-tb"
+                                  id="ic-bg-op-solid"
+                                  type="range"
+                                  min={0}
+                                  max={100}
+                                  value={Math.round(imageCard.backgroundOpacity * 100)}
+                                  onChange={(e) => {
+                                    const v = Number(e.target.value);
+                                    setImageCard((c) => ({
+                                      ...c,
+                                      backgroundOpacity: Math.min(1, Math.max(0, v / 100)),
+                                    }));
+                                  }}
+                                  title={`Непрозрачность фона: ${Math.round(imageCard.backgroundOpacity * 100)}%. Влияет только на слой фона.`}
+                                  aria-valuetext={`${Math.round(imageCard.backgroundOpacity * 100)} процентов`}
+                                  className="h-1 w-24 shrink-0 cursor-pointer accent-[var(--brand)]"
+                                />
+                              </>
+                            ) : null}
+
+                            {imageCard.backgroundMode === "gradient" ? (
+                              <>
+                                <div className="h-4 w-px shrink-0 bg-white/10" aria-hidden />
+                                <ColorPopover
+                                  label="Первый цвет"
+                                  triggerTitle="Первый цвет"
+                                  value={imageCard.backgroundGradientStartColor}
+                                  onChange={(hex) =>
+                                    setImageCard((c) => ({
+                                      ...c,
+                                      backgroundGradientStartColor: hex,
+                                      backgroundColor: hex,
+                                    }))
+                                  }
+                                  avoidRect={imageCardTextBandRect}
+                                  zIndex={260}
+                                />
+                                <ColorPopover
+                                  label="Второй цвет"
+                                  triggerTitle="Второй цвет"
+                                  value={imageCard.backgroundGradientEndColor}
+                                  onChange={(hex) =>
+                                    setImageCard((c) => ({
+                                      ...c,
+                                      backgroundGradientEndColor: hex,
+                                      accentColor: hex,
+                                    }))
+                                  }
+                                  avoidRect={imageCardTextBandRect}
+                                  zIndex={260}
+                                />
+                                <div
+                                  className="inline-flex shrink-0 items-center gap-0.5 rounded-full bg-black/[0.22] p-0.5"
+                                  role="group"
+                                  aria-label="Стиль градиента"
+                                >
+                                  <button
+                                    type="button"
+                                    aria-pressed={imageCard.backgroundGradientMode === "diagonal"}
+                                    aria-label="Наискось"
+                                    title="Наискось"
+                                    onClick={() =>
+                                      setImageCard((c) => ({
+                                        ...c,
+                                        backgroundGradientMode: "diagonal",
+                                      }))
+                                    }
+                                    className={`inline-flex size-8 items-center justify-center rounded-full transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)] ${
+                                      imageCard.backgroundGradientMode === "diagonal"
+                                        ? "bg-white/[0.14] text-zinc-50 ring-1 ring-white/20"
+                                        : "text-zinc-400 hover:text-zinc-200"
+                                    }`}
+                                  >
+                                    <ArrowDownRight className="size-4" strokeWidth={1.85} aria-hidden />
+                                  </button>
+                                  <button
+                                    type="button"
+                                    aria-pressed={imageCard.backgroundGradientMode === "radial"}
+                                    aria-label="От центра"
+                                    title="От центра"
+                                    onClick={() =>
+                                      setImageCard((c) => ({
+                                        ...c,
+                                        backgroundGradientMode: "radial",
+                                      }))
+                                    }
+                                    className={`inline-flex size-8 items-center justify-center rounded-full transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)] ${
+                                      imageCard.backgroundGradientMode === "radial"
+                                        ? "bg-white/[0.14] text-zinc-50 ring-1 ring-white/20"
+                                        : "text-zinc-400 hover:text-zinc-200"
+                                    }`}
+                                  >
+                                    <CircleDot className="size-4" strokeWidth={1.85} aria-hidden />
+                                  </button>
+                                </div>
+                                <label htmlFor="ic-bg-op-grad" className="sr-only">
+                                  Непрозрачность фона
+                                </label>
+                                <span
+                                  className="inline-flex size-8 shrink-0 items-center justify-center rounded-full text-zinc-300"
+                                  title="Непрозрачность фона"
+                                  aria-hidden
+                                >
+                                  <Droplets className="size-4" strokeWidth={1.8} />
+                                </span>
+                                <input
+                                  id="ic-bg-op-grad"
                                   type="range"
                                   min={0}
                                   max={100}
@@ -4221,55 +4282,85 @@ export function DashboardGuildPageClient({
                                   }}
                                   title={`Непрозрачность фона: ${Math.round(imageCard.backgroundOpacity * 100)}%`}
                                   aria-valuetext={`${Math.round(imageCard.backgroundOpacity * 100)} процентов`}
-                                  className="h-1.5 w-[min(10rem,36vw)] cursor-pointer accent-[var(--brand)]"
+                                  className="h-1 w-24 shrink-0 cursor-pointer accent-[var(--brand)]"
                                 />
                               </>
                             ) : null}
-                            <div className="hidden h-6 w-px bg-white/[0.08] sm:block" aria-hidden />
-                            <div className="flex items-center gap-1.5">
-                              <ColorPopover
-                                label="Цвет оверлея"
-                                triggerTitle="Цвет оверлея"
-                                value={imageCard.overlayColor}
-                                onChange={(hex) =>
-                                  setImageCard((c) => ({ ...c, overlayColor: hex }))
-                                }
-                                avoidRect={imageCardTextBandRect}
-                                zIndex={260}
-                              />
-                              <label
-                                htmlFor="image-card-overlay-op-tb"
-                                className="sr-only"
-                              >
-                                Сила оверлея
-                              </label>
-                              <input
-                                id="image-card-overlay-op-tb"
-                                type="range"
-                                min={0}
-                                max={100}
-                                value={Math.round(imageCard.overlayOpacity * 100)}
-                                onChange={(e) => {
-                                  const v = Number(e.target.value);
-                                  setImageCard((c) => ({
-                                    ...c,
-                                    overlayOpacity: Math.min(1, Math.max(0, v / 100)),
-                                  }));
-                                }}
-                                title={`Сила оверлея: ${Math.round(imageCard.overlayOpacity * 100)}%`}
-                                aria-valuetext={`${Math.round(imageCard.overlayOpacity * 100)} процентов`}
-                                className="h-1.5 w-[min(12rem,42vw)] cursor-pointer accent-[var(--brand)]"
-                              />
-                            </div>
+
+                            {imageCard.backgroundMode === "image" ? (
+                              <>
+                                <div className="h-4 w-px shrink-0 bg-white/10" aria-hidden />
+                                <ColorPopover
+                                  label="Цвет оверлея"
+                                  triggerTitle="Цвет оверлея"
+                                  value={imageCard.overlayColor}
+                                  onChange={(hex) =>
+                                    setImageCard((c) => ({ ...c, overlayColor: hex }))
+                                  }
+                                  avoidRect={imageCardTextBandRect}
+                                  zIndex={260}
+                                />
+                                <label htmlFor="ic-overlay-op" className="sr-only">
+                                  Сила оверлея
+                                </label>
+                                <span
+                                  className="inline-flex size-8 shrink-0 items-center justify-center rounded-full text-zinc-300"
+                                  title="Сила оверлея"
+                                  aria-hidden
+                                >
+                                  <Layers className="size-4" strokeWidth={1.8} />
+                                </span>
+                                <input
+                                  id="ic-overlay-op"
+                                  type="range"
+                                  min={0}
+                                  max={100}
+                                  value={Math.round(imageCard.overlayOpacity * 100)}
+                                  onChange={(e) => {
+                                    const v = Number(e.target.value);
+                                    setImageCard((c) => ({
+                                      ...c,
+                                      overlayOpacity: Math.min(1, Math.max(0, v / 100)),
+                                    }));
+                                  }}
+                                  title={`Сила оверлея: ${Math.round(imageCard.overlayOpacity * 100)}%`}
+                                  aria-valuetext={`${Math.round(imageCard.overlayOpacity * 100)} процентов`}
+                                  className="h-1 w-24 shrink-0 cursor-pointer accent-[var(--brand)]"
+                                />
+                                <label htmlFor="ic-img-op" className="sr-only">
+                                  Непрозрачность фона
+                                </label>
+                                <span
+                                  className="inline-flex size-8 shrink-0 items-center justify-center rounded-full text-zinc-300"
+                                  title="Непрозрачность фона"
+                                  aria-hidden
+                                >
+                                  <Droplets className="size-4" strokeWidth={1.8} />
+                                </span>
+                                <input
+                                  id="ic-img-op"
+                                  type="range"
+                                  min={0}
+                                  max={100}
+                                  value={Math.round(imageCard.backgroundOpacity * 100)}
+                                  onChange={(e) => {
+                                    const v = Number(e.target.value);
+                                    setImageCard((c) => ({
+                                      ...c,
+                                      backgroundOpacity: Math.min(1, Math.max(0, v / 100)),
+                                    }));
+                                  }}
+                                  title={`Непрозрачность фона: ${Math.round(imageCard.backgroundOpacity * 100)}%`}
+                                  aria-valuetext={`${Math.round(imageCard.backgroundOpacity * 100)} процентов`}
+                                  className="h-1 w-24 shrink-0 cursor-pointer accent-[var(--brand)]"
+                                />
+                              </>
+                            ) : null}
                           </div>
                         </div>
 
                         <div
-                          className={`overflow-hidden shadow-[0_16px_56px_rgba(0,0,0,0.38)] ring-1 ring-white/[0.09] ${
-                            imageCard.backgroundMode === "transparent"
-                              ? "bg-transparent"
-                              : "bg-zinc-950"
-                          }`}
+                          className="overflow-hidden bg-zinc-950 shadow-[0_16px_56px_rgba(0,0,0,0.38)] ring-1 ring-white/[0.09]"
                           style={{ borderRadius: IMAGE_CARD_RADIUS_PX }}
                           aria-label="Карточка приветствия"
                         >
@@ -4277,41 +4368,79 @@ export function DashboardGuildPageClient({
                             ref={imageCardAspectRef}
                             className="relative aspect-[1200/515] w-full min-h-[140px] overflow-hidden"
                           >
-                            {imageCard.backgroundMode === "transparent" ? (
-                              <div
-                                className="absolute inset-0"
-                                style={IMAGE_CARD_PREVIEW_CHECKERBOARD_STYLE}
-                                aria-hidden
-                              />
+                            {imageCard.backgroundMode === "image" ? (
+                              <>
+                                <input
+                                  ref={imageCardBgFileInputRef}
+                                  type="file"
+                                  accept="image/png,image/jpeg,image/webp"
+                                  className="hidden"
+                                  onChange={handleImageCardBgFile}
+                                />
+                                <button
+                                  type="button"
+                                  disabled={imageCardBgUploadBusy}
+                                  title={imageCardHasBackgroundAsset ? "Удалить фон" : "Загрузить фон"}
+                                  aria-label={imageCardHasBackgroundAsset ? "Удалить фон" : "Загрузить фон"}
+                                  onClick={() => {
+                                    if (imageCardHasBackgroundAsset) {
+                                      handleImageCardBgRemove();
+                                      return;
+                                    }
+                                    imageCardBgFileInputRef.current?.click();
+                                  }}
+                                  className="absolute left-2 top-2 z-30 inline-flex size-8 items-center justify-center rounded-full border border-white/[0.14] bg-[rgba(14,14,18,0.55)] text-white/90 shadow-[0_8px_24px_rgba(0,0,0,0.35)] backdrop-blur-md transition hover:bg-[rgba(24,24,32,0.62)] hover:text-white disabled:opacity-45"
+                                >
+                                  {imageCardBgUploadBusy ? (
+                                    <span
+                                      className="size-4 animate-spin rounded-full border-2 border-white/25 border-t-white/90"
+                                      aria-hidden
+                                    />
+                                  ) : imageCardHasBackgroundAsset ? (
+                                    <Trash2 className="size-4" strokeWidth={1.85} aria-hidden />
+                                  ) : (
+                                    <Upload className="size-4" strokeWidth={1.85} aria-hidden />
+                                  )}
+                                </button>
+                              </>
                             ) : null}
+                            <div
+                              className="absolute inset-0 z-0"
+                              style={IMAGE_CARD_SOLID_PREVIEW_BACKING}
+                              aria-hidden
+                            />
                             {imageCard.backgroundMode === "image" && imageCardBackgroundPreviewUrl ? (
                               <img
                                 src={imageCardBackgroundPreviewUrl}
                                 alt=""
-                                className="absolute inset-0 h-full w-full object-cover"
+                                className="absolute inset-0 z-[1] h-full w-full object-cover"
                                 style={{ opacity: imageCard.backgroundOpacity }}
                               />
-                            ) : imageCard.backgroundMode !== "transparent" ? (
+                            ) : imageCard.backgroundMode === "gradient" ? (
                               <div
-                                className="absolute inset-0"
+                                className="absolute inset-0 z-[1]"
+                                style={imageCardGradientPreviewLayerStyle(imageCard)}
+                              />
+                            ) : (
+                              <div
+                                className="absolute inset-0 z-[1]"
                                 style={{
-                                  background:
-                                    imageCard.backgroundMode === "gradient"
-                                      ? `linear-gradient(135deg, ${imageCard.backgroundColor}, ${imageCardGradientEndHex(imageCard.backgroundColor, imageCard.accentColor)})`
-                                      : imageCard.backgroundColor,
+                                  backgroundColor: imageCard.backgroundColor,
                                   opacity: imageCard.backgroundOpacity,
                                 }}
                               />
+                            )}
+                            {imageCard.backgroundMode === "image" ? (
+                              <div
+                                className="absolute inset-0 z-[2]"
+                                style={{
+                                  backgroundColor: imageCard.overlayColor,
+                                  opacity: imageCard.overlayOpacity,
+                                }}
+                                aria-hidden
+                              />
                             ) : null}
-                            <div
-                              className="absolute inset-0"
-                              style={{
-                                backgroundColor: imageCard.overlayColor,
-                                opacity: imageCard.overlayOpacity,
-                              }}
-                              aria-hidden
-                            />
-                            <div className="relative z-[1] flex h-full min-h-0 flex-col items-center justify-center px-[4%] py-[3%] text-center">
+                            <div className="relative z-10 flex h-full min-h-0 flex-col items-center justify-center px-[4%] py-[3%] text-center">
                               <div
                                 ref={imageCardTextBandRef}
                                 className="flex w-full flex-col items-center"

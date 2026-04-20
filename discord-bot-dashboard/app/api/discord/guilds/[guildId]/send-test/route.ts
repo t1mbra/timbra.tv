@@ -224,10 +224,9 @@ export async function POST(
     const titleRaw = typeof ic.title === "string" ? ic.title : "Добро пожаловать";
     const subtitleRaw = typeof ic.subtitle === "string" ? ic.subtitle : "";
     const descriptionRaw = typeof ic.description === "string" ? ic.description : "";
-    let bgMode: "gradient" | "solid" | "image" | "transparent" = "gradient";
+    let bgMode: "gradient" | "solid" | "image" = "gradient";
     if (ic.backgroundMode === "solid") bgMode = "solid";
     else if (ic.backgroundMode === "image") bgMode = "image";
-    else if (ic.backgroundMode === "transparent") bgMode = "transparent";
     const backgroundOpacity =
       typeof ic.backgroundOpacity === "number" && !Number.isNaN(ic.backgroundOpacity)
         ? Math.min(1, Math.max(0, ic.backgroundOpacity))
@@ -236,6 +235,9 @@ export async function POST(
       typeof ic.backgroundColor === "string" ? ic.backgroundColor : "#12131a";
     const accColor =
       typeof ic.accentColor === "string" ? ic.accentColor : "#8038ce";
+    const backgroundGradientStartColor = ic.backgroundGradientStartColor;
+    const backgroundGradientEndColor = ic.backgroundGradientEndColor;
+    const backgroundGradientMode = ic.backgroundGradientMode;
     const overlayColor =
       typeof ic.overlayColor === "string" ? ic.overlayColor : DEFAULT_OVERLAY_COLOR;
     const overlayOpacity =
@@ -284,6 +286,9 @@ export async function POST(
           backgroundOpacity,
           backgroundColor: bgColor,
           accentColor: accColor,
+          backgroundGradientStartColor,
+          backgroundGradientEndColor,
+          backgroundGradientMode,
           backgroundImageDataUrl: backgroundImageDataUrl || undefined,
           backgroundImagePath,
           displayName: resolveTestVariables("{username}"),

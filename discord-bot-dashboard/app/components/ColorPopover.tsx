@@ -7,7 +7,9 @@ import {
   useLayoutEffect,
   useRef,
   useState,
+  type ReactNode,
 } from "react";
+import { Layers } from "lucide-react";
 import { createPortal } from "react-dom";
 import { HexColorPicker } from "react-colorful";
 
@@ -30,6 +32,10 @@ export type ColorPopoverProps = {
   label: string;
   /** Подсказка для кнопки-триггера */
   triggerTitle?: string;
+  /** swatch — круг с цветом; overlay — иконка слоёв (цвет оверлея карточки) */
+  triggerAppearance?: "swatch" | "overlay";
+  /** Доп. строка в title (через « — ») */
+  titleExtra?: string;
   /** Область карточки: поповер старается не перекрывать (например, зона заголовка/подзаголовка) */
   avoidRect?: DOMRect | null;
   /** z-index панели */
@@ -44,6 +50,8 @@ export function ColorPopover({
   onChange,
   label,
   triggerTitle,
+  triggerAppearance = "swatch",
+  titleExtra,
   avoidRect,
   zIndex = 250,
 }: ColorPopoverProps) {
@@ -292,24 +300,43 @@ export function ColorPopover({
     </div>
   );
 
+  const triggerTitleMerged = [triggerTitle ?? label, titleExtra].filter(Boolean).join(" — ");
+
+  const swatchTrigger: ReactNode = (
+    <span
+      className="block size-5 rounded-full ring-1 ring-black/40"
+      style={{ backgroundColor: isValidHexInput(value) ? normalizeHexColor(value, fallback) : fallback }}
+    />
+  );
+
+  const overlayTrigger: ReactNode = (
+    <span className="relative inline-flex items-center justify-center">
+      <Layers className="size-[18px] text-zinc-200/95" strokeWidth={1.75} aria-hidden />
+      <span
+        className="absolute -bottom-0.5 -right-0.5 size-2.5 rounded-full ring-1 ring-white/45"
+        style={{
+          backgroundColor: isValidHexInput(value) ? normalizeHexColor(value, fallback) : fallback,
+        }}
+        aria-hidden
+      />
+    </span>
+  );
+
   return (
     <>
       <button
         ref={triggerRef}
         type="button"
-        title={triggerTitle ?? label}
+        title={triggerTitleMerged}
         aria-label={label}
         aria-expanded={open}
         aria-haspopup="dialog"
         onClick={() => {
           setOpen((o) => !o);
         }}
-        className="inline-flex size-8 shrink-0 items-center justify-center rounded-full bg-white/[0.08] text-zinc-100 transition hover:bg-white/[0.12] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)]"
+        className="inline-flex size-8 shrink-0 items-center justify-center rounded-full border border-white/[0.08] bg-white/[0.08] text-zinc-100 shadow-[inset_0_1px_0_rgba(255,255,255,0.06)] backdrop-blur-sm transition hover:bg-white/[0.12] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)]"
       >
-        <span
-          className="block size-5 rounded-full ring-1 ring-black/40"
-          style={{ backgroundColor: isValidHexInput(value) ? normalizeHexColor(value, fallback) : fallback }}
-        />
+        {triggerAppearance === "overlay" ? overlayTrigger : swatchTrigger}
       </button>
       {typeof document !== "undefined" && panel ? createPortal(panel, document.body) : null}
     </>

@@ -43,11 +43,17 @@ export type ImageCardGuildConfigMerged = {
   fontStyle: ImageCardFontStyle;
   overlayColor: string;
   overlayOpacity: number;
-  backgroundMode: "gradient" | "solid" | "image" | "transparent";
-  /** Непрозрачность слоя фона (градиент / заливка / изображение). Режим transparent игнорирует. */
+  backgroundMode: "gradient" | "solid" | "image";
+  /** Непрозрачность слоя фона (градиент / заливка / изображение). */
   backgroundOpacity: number;
   backgroundColor: string;
   accentColor: string;
+  /** Градиент: первый цвет (устаревшие конфиги без полей берут backgroundColor). */
+  backgroundGradientStartColor: string;
+  /** Градиент: второй цвет (по умолчанию accentColor). */
+  backgroundGradientEndColor: string;
+  /** Градиент: направление. */
+  backgroundGradientMode: "diagonal" | "radial";
   /** Фон как data URL (приоритетнее файла на диске). */
   backgroundImageDataUrl: string;
   backgroundImage: ImageCardBackgroundImageConfig;
@@ -78,8 +84,11 @@ const defaults: ImageCardGuildConfigMerged = {
   overlayOpacity: DEFAULT_OVERLAY_OPACITY,
   backgroundMode: "gradient",
   backgroundOpacity: 1,
-  backgroundColor: "#12131a",
-  accentColor: "#8038ce",
+  backgroundColor: "#3b2065",
+  accentColor: "#111827",
+  backgroundGradientStartColor: "#3b2065",
+  backgroundGradientEndColor: "#111827",
+  backgroundGradientMode: "radial",
   backgroundImageDataUrl: "",
   backgroundImage: { enabled: false, path: "" },
   showAvatar: true,
@@ -160,6 +169,9 @@ export function imageCardsEqual(a: ImageCardGuildConfigMerged, b: ImageCardGuild
     a.backgroundOpacity === b.backgroundOpacity &&
     a.backgroundColor === b.backgroundColor &&
     a.accentColor === b.accentColor &&
+    a.backgroundGradientStartColor === b.backgroundGradientStartColor &&
+    a.backgroundGradientEndColor === b.backgroundGradientEndColor &&
+    a.backgroundGradientMode === b.backgroundGradientMode &&
     a.backgroundImageDataUrl === b.backgroundImageDataUrl &&
     a.backgroundImage.enabled === b.backgroundImage.enabled &&
     a.backgroundImage.path === b.backgroundImage.path &&
@@ -197,10 +209,10 @@ export function mergeImageCard(
   }
   const o = raw as Record<string, unknown>;
 
-  let backgroundMode: "gradient" | "solid" | "image" | "transparent" = "gradient";
+  let backgroundMode: "gradient" | "solid" | "image" = "gradient";
   if (o.backgroundMode === "solid") backgroundMode = "solid";
   else if (o.backgroundMode === "image") backgroundMode = "image";
-  else if (o.backgroundMode === "transparent") backgroundMode = "transparent";
+  else if (o.backgroundMode === "transparent") backgroundMode = "solid";
   else if (o.backgroundMode === "gradient") backgroundMode = "gradient";
 
   const titleRaw = o.titleStyle && typeof o.titleStyle === "object" && !Array.isArray(o.titleStyle)
@@ -272,6 +284,24 @@ export function mergeImageCard(
 
   const titleTrimmed = typeof o.title === "string" ? o.title.trim() : "";
 
+  const backgroundColorResolved =
+    typeof o.backgroundColor === "string" ? o.backgroundColor : defaults.backgroundColor;
+  const accentColorResolved =
+    typeof o.accentColor === "string" ? o.accentColor : defaults.accentColor;
+
+  let backgroundGradientStartColor =
+    typeof o.backgroundGradientStartColor === "string" && o.backgroundGradientStartColor.trim()
+      ? o.backgroundGradientStartColor.trim()
+      : backgroundColorResolved;
+  let backgroundGradientEndColor =
+    typeof o.backgroundGradientEndColor === "string" && o.backgroundGradientEndColor.trim()
+      ? o.backgroundGradientEndColor.trim()
+      : accentColorResolved;
+
+  let backgroundGradientMode: "diagonal" | "radial" = defaults.backgroundGradientMode;
+  if (o.backgroundGradientMode === "radial") backgroundGradientMode = "radial";
+  else if (o.backgroundGradientMode === "diagonal") backgroundGradientMode = "diagonal";
+
   return {
     title: titleTrimmed ? titleTrimmed : defaults.title,
     subtitle:
@@ -293,9 +323,11 @@ export function mergeImageCard(
       o.backgroundOpacity,
       defaults.backgroundOpacity
     ),
-    backgroundColor:
-      typeof o.backgroundColor === "string" ? o.backgroundColor : defaults.backgroundColor,
-    accentColor: typeof o.accentColor === "string" ? o.accentColor : defaults.accentColor,
+    backgroundColor: backgroundColorResolved,
+    accentColor: accentColorResolved,
+    backgroundGradientStartColor,
+    backgroundGradientEndColor,
+    backgroundGradientMode,
     backgroundImageDataUrl,
     backgroundImage,
     showAvatar: true,
