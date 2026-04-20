@@ -3366,17 +3366,14 @@ export function DashboardGuildPageClient({
                       </div>
                       {welcomeDeliveryMode === "channel" ? (
                       <div className="mt-3">
-                        <p className="welcome-help-text">{welcomeModuleCopy.deliveryChannelSelectHint}</p>
-                        <div className="mt-2">
-                          <CustomSelect
-                            value={channelId}
-                            options={channelOptions}
-                            placeholder={resourcesLoading ? "Загрузка каналов..." : "Не выбран"}
-                            disabled={resourcesLoading}
-                            onChange={setChannelId}
-                            ariaLabel="Канал для приветствия"
-                          />
-                        </div>
+                        <CustomSelect
+                          value={channelId}
+                          options={channelOptions}
+                          placeholder={resourcesLoading ? "Загрузка каналов..." : "Не выбран"}
+                          disabled={resourcesLoading}
+                          onChange={setChannelId}
+                          ariaLabel="Канал для приветствия"
+                        />
                       </div>
                       ) : (
                       <div className="mt-3 space-y-4">
