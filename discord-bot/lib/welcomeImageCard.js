@@ -292,6 +292,24 @@ function drawImageCover(ctx, img, dx, dy, dWidth, dHeight) {
 
 async function drawBackground(ctx, input) {
   const bg = parseHex(input.backgroundColor, "#12131a");
+  const dataUrl =
+    typeof input.backgroundImageDataUrl === "string"
+      ? input.backgroundImageDataUrl.trim()
+      : "";
+  if (
+    input.backgroundMode === "image" &&
+    dataUrl.startsWith("data:image/") &&
+    dataUrl.includes("base64,")
+  ) {
+    try {
+      const bgImg = await loadImage(dataUrl);
+      drawImageCover(ctx, bgImg, 0, 0, W, H);
+      return;
+    } catch {
+      /* fallback */
+    }
+  }
+
   const p = input.backgroundImagePath;
   const useImage =
     input.backgroundMode === "image" &&

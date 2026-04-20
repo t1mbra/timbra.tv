@@ -3,6 +3,7 @@ import {
   DEFAULT_OVERLAY_COLOR,
   DEFAULT_OVERLAY_OPACITY,
   DEFAULT_TEXT_COLOR,
+  MAX_IMAGE_CARD_BACKGROUND_DATA_URL_CHARS,
   isImageCardFontKey,
   type ImageCardFontKey,
 } from "./welcomeCardConstants";
@@ -45,6 +46,8 @@ export type ImageCardGuildConfigMerged = {
   backgroundMode: "gradient" | "solid" | "image";
   backgroundColor: string;
   accentColor: string;
+  /** Фон как data URL (приоритетнее файла на диске). */
+  backgroundImageDataUrl: string;
   backgroundImage: ImageCardBackgroundImageConfig;
   showAvatar: boolean;
   showUsername: boolean;
@@ -74,6 +77,7 @@ const defaults: ImageCardGuildConfigMerged = {
   backgroundMode: "gradient",
   backgroundColor: "#12131a",
   accentColor: "#8038ce",
+  backgroundImageDataUrl: "",
   backgroundImage: { enabled: false, path: "" },
   showAvatar: true,
   showUsername: false,
@@ -152,10 +156,20 @@ export function imageCardsEqual(a: ImageCardGuildConfigMerged, b: ImageCardGuild
     a.backgroundMode === b.backgroundMode &&
     a.backgroundColor === b.backgroundColor &&
     a.accentColor === b.accentColor &&
+    a.backgroundImageDataUrl === b.backgroundImageDataUrl &&
     a.backgroundImage.enabled === b.backgroundImage.enabled &&
     a.backgroundImage.path === b.backgroundImage.path &&
     (a.backgroundImage.filename ?? "") === (b.backgroundImage.filename ?? "")
   );
+}
+
+function normalizeBackgroundImageDataUrl(raw: unknown): string {
+  if (typeof raw !== "string") return "";
+  const s = raw.trim();
+  if (!s.startsWith("data:image/") || !s.includes("base64,")) return "";
+  if (s.length > MAX_IMAGE_CARD_BACKGROUND_DATA_URL_CHARS) return "";
+  if (!/^data:image\/(png|jpeg|webp|jpg);base64,/i.test(s)) return "";
+  return s;
 }
 
 export function mergeImageCard(
@@ -166,6 +180,7 @@ export function mergeImageCard(
   if (!raw || typeof raw !== "object" || Array.isArray(raw)) {
     const base = {
       ...defaults,
+      backgroundImageDataUrl: "",
       backgroundImage: { ...defaults.backgroundImage },
       titleStyle: { ...defaults.titleStyle },
       subtitleStyle: { ...defaults.subtitleStyle },
@@ -247,6 +262,8 @@ export function mergeImageCard(
     };
   }
 
+  const backgroundImageDataUrl = normalizeBackgroundImageDataUrl(o.backgroundImageDataUrl);
+
   const titleTrimmed = typeof o.title === "string" ? o.title.trim() : "";
 
   return {
@@ -269,6 +286,7 @@ export function mergeImageCard(
     backgroundColor:
       typeof o.backgroundColor === "string" ? o.backgroundColor : defaults.backgroundColor,
     accentColor: typeof o.accentColor === "string" ? o.accentColor : defaults.accentColor,
+    backgroundImageDataUrl,
     backgroundImage,
     showAvatar: true,
     showUsername: false,

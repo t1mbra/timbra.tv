@@ -378,7 +378,15 @@ async function sendWelcome(member, config) {
 
     const sharedRoot = resolveSharedDataDir();
     const fontDir = resolveWelcomeCardFontDir();
-    const backgroundImagePath = resolveImageCardBackgroundPath(sharedRoot, ic.backgroundImage);
+    const backgroundImageDataUrl =
+      typeof ic.backgroundImageDataUrl === "string" ? ic.backgroundImageDataUrl.trim() : "";
+    const backgroundImagePath =
+      !backgroundImageDataUrl &&
+      bgMode === "image" &&
+      ic.backgroundImage &&
+      typeof ic.backgroundImage === "object"
+        ? resolveImageCardBackgroundPath(sharedRoot, ic.backgroundImage)
+        : null;
 
     const displayName = member.displayName || member.user.username;
     const avatarUrl = member.user.displayAvatarURL({ extension: "png", size: 256 });
@@ -398,6 +406,7 @@ async function sendWelcome(member, config) {
           backgroundMode: bgMode,
           backgroundColor: bgColor,
           accentColor: accColor,
+          backgroundImageDataUrl: backgroundImageDataUrl || undefined,
           backgroundImagePath,
           displayName,
           avatarUrl,

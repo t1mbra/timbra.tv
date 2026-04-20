@@ -77,6 +77,12 @@ export const DEFAULT_TEXT_COLOR = "#f4f4f5";
 export const DEFAULT_OVERLAY_COLOR = "#09090b";
 export const DEFAULT_OVERLAY_OPACITY = 0.35;
 
+/** Макс. длина data URL для фона карточки в JSON (Postgres/JSONB). */
+export const MAX_IMAGE_CARD_BACKGROUND_DATA_URL_CHARS = 2_200_000;
+
+/** Макс. размер исходного файла фона до base64 (байты). */
+export const MAX_IMAGE_CARD_BACKGROUND_FILE_BYTES = 1_400_000;
+
 /** Относительный путь от shared-data; подставляется guildId при сохранении */
 export function welcomeCardBackgroundRelativePath(guildId: string, ext: string): string {
   const safeExt = ext.replace(/^\./, "").toLowerCase();

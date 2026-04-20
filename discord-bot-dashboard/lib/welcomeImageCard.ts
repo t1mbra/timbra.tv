@@ -48,6 +48,8 @@ export type ImageCardGenerationInput = {
   backgroundMode: ImageCardBackgroundMode;
   backgroundColor: string;
   accentColor: string;
+  /** Приоритет над backgroundImagePath */
+  backgroundImageDataUrl?: string | null;
   backgroundImagePath?: string | null;
   showAvatar?: boolean;
   showUsername?: boolean;
@@ -176,6 +178,22 @@ function drawImageCover(
 
 async function drawBackground(ctx: SKRSContext2D, input: ImageCardGenerationInput): Promise<void> {
   const bg = parseHex(input.backgroundColor, "#12131a");
+  const dataUrl =
+    typeof input.backgroundImageDataUrl === "string" ? input.backgroundImageDataUrl.trim() : "";
+  if (
+    input.backgroundMode === "image" &&
+    dataUrl.startsWith("data:image/") &&
+    dataUrl.includes("base64,")
+  ) {
+    try {
+      const bgImg = await loadImage(dataUrl);
+      drawImageCover(ctx, bgImg, 0, 0, W, H);
+      return;
+    } catch {
+      /* fallback to file or gradient */
+    }
+  }
+
   const useImage =
     input.backgroundMode === "image" &&
     typeof input.backgroundImagePath === "string" &&

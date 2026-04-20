@@ -240,8 +240,12 @@ export async function POST(
 
     const fontDir = fontDirForMerge;
 
+    const backgroundImageDataUrl =
+      typeof ic.backgroundImageDataUrl === "string" ? ic.backgroundImageDataUrl.trim() : "";
+
     let backgroundImagePath: string | null = null;
     if (
+      !backgroundImageDataUrl &&
       bgMode === "image" &&
       ic.backgroundImage &&
       typeof ic.backgroundImage === "object"
@@ -274,6 +278,7 @@ export async function POST(
           backgroundMode: bgMode,
           backgroundColor: bgColor,
           accentColor: accColor,
+          backgroundImageDataUrl: backgroundImageDataUrl || undefined,
           backgroundImagePath,
           displayName: resolveTestVariables("{username}"),
           avatarUrl: viewerAvatarUrl,

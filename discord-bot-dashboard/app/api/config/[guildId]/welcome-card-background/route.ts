@@ -1,14 +1,24 @@
 import { cookies } from "next/headers";
-import { mkdir, readdir, readFile, stat, unlink, writeFile } from "node:fs/promises";
+import { readdir, readFile, stat, unlink } from "node:fs/promises";
 import path from "node:path";
 import { NextResponse } from "next/server";
 
 import { discordFetch } from "@/lib/discordFetch";
-import { welcomeCardBackgroundRelativePath } from "@/lib/welcomeCardConstants";
+import { mergeImageCard } from "@/lib/mergeImageCardConfig";
+import type { GuildConfig } from "@/lib/persistence/configTypes";
+import {
+  readRawConfig,
+  writeRawConfig,
+} from "@/lib/persistence/configStore";
+import { listAvailableWelcomeCardFontKeys } from "@/lib/resolveImageCardFont";
+import { resolveWelcomeCardFontDir } from "@/lib/resolveWelcomeCardFontDir";
 import { resolveSharedDataDir } from "@/lib/resolveSharedDataDir";
+import {
+  MAX_IMAGE_CARD_BACKGROUND_DATA_URL_CHARS,
+  MAX_IMAGE_CARD_BACKGROUND_FILE_BYTES,
+} from "@/lib/welcomeCardConstants";
 
 const SNOWFLAKE_RE = /^\d{17,20}$/;
-const MAX_BYTES = 2_500_000;
 
 const MIME_TO_EXT: Record<string, "png" | "jpg" | "webp"> = {
   "image/png": "png",
@@ -69,7 +79,7 @@ async function findBackgroundFile(guildId: string): Promise<{
   return null;
 }
 
-/** GET — фон для превью (с cookie сессии) */
+/** GET — фон для превью по legacy-пути на диске (без data URL в конфиге). */
 export async function GET(
   _request: Request,
   context: { params: Promise<{ guildId: string }> }
@@ -103,7 +113,7 @@ export async function GET(
   });
 }
 
-/** POST — multipart: поле `file` */
+/** POST — multipart: сохраняет фон в конфиг гильдии как data URL (Postgres/JSON). */
 export async function POST(
   request: Request,
   context: { params: Promise<{ guildId: string }> }
@@ -134,8 +144,11 @@ export async function POST(
     return NextResponse.json({ error: "Нужен файл в поле file" }, { status: 400 });
   }
 
-  if (file.size > MAX_BYTES) {
-    return NextResponse.json({ error: "Файл слишком большой (макс. 2,5 МБ)" }, { status: 400 });
+  if (file.size > MAX_IMAGE_CARD_BACKGROUND_FILE_BYTES) {
+    return NextResponse.json(
+      { error: "Файл слишком большой (макс. ~1,4 МБ)" },
+      { status: 400 }
+    );
   }
 
   const mime = file.type || "application/octet-stream";
@@ -148,33 +161,67 @@ export async function POST(
   }
 
   const buf = Buffer.from(await file.arrayBuffer());
-  const dir = guildAssetsDir(guildId);
-  await mkdir(dir, { recursive: true });
+  const mimeForData = mime === "image/jpg" ? "image/jpeg" : mime;
+  const dataUrl = `data:${mimeForData};base64,${buf.toString("base64")}`;
+
+  if (dataUrl.length > MAX_IMAGE_CARD_BACKGROUND_DATA_URL_CHARS) {
+    return NextResponse.json(
+      {
+        error:
+          "Слишком большой объём данных после кодирования. Выберите файл меньшего размера.",
+      },
+      { status: 400 }
+    );
+  }
+
+  const root = await readRawConfig();
+  const prev = root.guilds[guildId];
+  if (!prev || typeof prev !== "object") {
+    return NextResponse.json(
+      {
+        error: "Сначала сохраните настройки сервера (кнопка «Сохранить»).",
+      },
+      { status: 400 }
+    );
+  }
+
+  const prevIc = prev.imageCard;
+  const avail = listAvailableWelcomeCardFontKeys(resolveWelcomeCardFontDir());
+  const nextIc = mergeImageCard(
+    {
+      ...(prevIc && typeof prevIc === "object" ? prevIc : {}),
+      backgroundImageDataUrl: dataUrl,
+      backgroundMode: "image",
+      backgroundImage: { enabled: true, path: "", filename: undefined },
+    },
+    { availableFontKeys: avail }
+  );
+
+  root.guilds[guildId] = { ...(prev as GuildConfig), imageCard: nextIc };
+
+  await writeRawConfig(root);
 
   try {
-    const entries = await readdir(dir);
+    const dir = guildAssetsDir(guildId);
+    const entries = await readdir(dir).catch(() => [] as string[]);
     for (const name of entries) {
       if (name.startsWith("welcome-card-background.")) {
         await unlink(path.join(dir, name)).catch(() => {});
       }
     }
   } catch {
-    /* пустая папка */
+    /* нет legacy-файлов */
   }
 
-  const filename = `welcome-card-background.${ext}`;
-  const fullPath = path.join(dir, filename);
-  await writeFile(fullPath, buf);
-
-  const relativePath = welcomeCardBackgroundRelativePath(guildId, ext);
   return NextResponse.json({
     ok: true,
-    path: relativePath,
-    filename,
+    backgroundImageDataUrl: dataUrl,
+    path: "",
+    filename: undefined,
   });
 }
 
-/** DELETE — удалить фон */
+/** DELETE — убрать фон из конфига и legacy-файлы. */
 export async function DELETE(
   _request: Request,
   context: { params: Promise<{ guildId: string }> }
@@ -193,8 +240,30 @@ export async function DELETE(
   const deny = await assertGuildAccess(guildId, accessToken);
   if (deny) return deny;
 
-  const dir = guildAssetsDir(guildId);
+  const root = await readRawConfig();
+  const prev = root.guilds[guildId];
+  if (!prev || typeof prev !== "object") {
+    return NextResponse.json({ ok: true });
+  }
+
+  const prevIc = prev.imageCard;
+  const avail = listAvailableWelcomeCardFontKeys(resolveWelcomeCardFontDir());
+  const nextIc = mergeImageCard(
+    {
+      ...(prevIc && typeof prevIc === "object" ? prevIc : {}),
+      backgroundImageDataUrl: "",
+      backgroundMode: "gradient",
+      backgroundImage: { enabled: false, path: "", filename: undefined },
+    },
+    { availableFontKeys: avail }
+  );
+
+  root.guilds[guildId] = { ...(prev as GuildConfig), imageCard: nextIc };
+
+  await writeRawConfig(root);
+
   try {
+    const dir = guildAssetsDir(guildId);
     const entries = await readdir(dir);
     for (const name of entries) {
       if (name.startsWith("welcome-card-background.")) {

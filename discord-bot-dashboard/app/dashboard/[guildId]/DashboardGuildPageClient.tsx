@@ -2681,17 +2681,29 @@ export function DashboardGuildPageClient({
   }, [unsavedGuardAttentionCounter]);
 
   const imageCardBackgroundPreviewUrl = useMemo(() => {
-    if (
-      imageCard.backgroundMode !== "image" ||
-      !imageCard.backgroundImage.enabled ||
-      !imageCard.backgroundImage.path.trim()
-    ) {
+    if (imageCard.backgroundMode !== "image") return null;
+    const dataUrl = imageCard.backgroundImageDataUrl?.trim();
+    if (dataUrl?.startsWith("data:image/")) return dataUrl;
+    if (!imageCard.backgroundImage.enabled || !imageCard.backgroundImage.path.trim()) {
       return null;
     }
     return `/api/config/${guildId}/welcome-card-background`;
   }, [
     guildId,
     imageCard.backgroundMode,
+    imageCard.backgroundImageDataUrl,
+    imageCard.backgroundImage.enabled,
+    imageCard.backgroundImage.path,
+  ]);
+
+  const imageCardHasBackgroundAsset = useMemo(() => {
+    const d = imageCard.backgroundImageDataUrl?.trim();
+    if (d?.startsWith("data:image/")) return true;
+    return (
+      imageCard.backgroundImage.enabled && Boolean(imageCard.backgroundImage.path?.trim())
+    );
+  }, [
+    imageCard.backgroundImageDataUrl,
     imageCard.backgroundImage.enabled,
     imageCard.backgroundImage.path,
   ]);
@@ -2726,20 +2738,24 @@ export function DashboardGuildPageClient({
       });
       const data = (await res.json()) as {
         ok?: boolean;
+        backgroundImageDataUrl?: string;
         path?: string;
         filename?: string;
         error?: string;
       };
-      if (res.ok && data.path) {
-        setImageCard((c) => ({
-          ...c,
+      if (res.ok && data.backgroundImageDataUrl) {
+        const next: ImageCardConfig = {
+          ...imageCard,
           backgroundMode: "image",
+          backgroundImageDataUrl: data.backgroundImageDataUrl,
           backgroundImage: {
             enabled: true,
-            path: data.path!,
+            path: data.path ?? "",
             filename: data.filename,
           },
-        }));
+        };
+        setImageCard(next);
+        setLastSavedConfig((ls) => (ls ? { ...ls, imageCard: next } : ls));
       }
     } catch {
       /* сеть */
@@ -2755,11 +2771,14 @@ export function DashboardGuildPageClient({
         method: "DELETE",
         credentials: "include",
       });
-      setImageCard((c) => ({
-        ...c,
+      const next: ImageCardConfig = {
+        ...imageCard,
         backgroundMode: "gradient",
+        backgroundImageDataUrl: "",
         backgroundImage: { enabled: false, path: "", filename: undefined },
-      }));
+      };
+      setImageCard(next);
+      setLastSavedConfig((ls) => (ls ? { ...ls, imageCard: next } : ls));
     } catch {
       /* сеть */
     } finally {
@@ -3187,11 +3206,11 @@ export function DashboardGuildPageClient({
                     subtitle={activeSectionMeta.subtitle}
                     defaultOpen
                   >
-                    <div className="relative">
+                    <div className="relative overflow-hidden rounded-2xl">
                       <div
                         className={`welcome-settings-stack${
                           !welcomeEnabled
-                            ? " pointer-events-none opacity-[0.42] saturate-[0.88] contrast-[0.92]"
+                            ? " pointer-events-none opacity-[0.5] saturate-[0.55] brightness-[0.72]"
                             : ""
                         }`}
                       >
@@ -4125,15 +4144,9 @@ export function DashboardGuildPageClient({
                                 <button
                                   type="button"
                                   disabled={imageCardBgUploadBusy}
-                                  title={
-                                    imageCard.backgroundImage.enabled && imageCard.backgroundImage.path
-                                      ? "Заменить фон"
-                                      : "Загрузить фон"
-                                  }
+                                  title={imageCardHasBackgroundAsset ? "Заменить фон" : "Загрузить фон"}
                                   aria-label={
-                                    imageCard.backgroundImage.enabled && imageCard.backgroundImage.path
-                                      ? "Заменить фон"
-                                      : "Загрузить фон"
+                                    imageCardHasBackgroundAsset ? "Заменить фон" : "Загрузить фон"
                                   }
                                   onClick={() => imageCardBgFileInputRef.current?.click()}
                                   className="inline-flex size-8 items-center justify-center rounded-md border-0 bg-transparent p-0 text-white/90 shadow-none transition hover:text-white hover:opacity-85 disabled:opacity-40"
@@ -4147,7 +4160,7 @@ export function DashboardGuildPageClient({
                                     <Upload className="size-4" strokeWidth={1.85} aria-hidden />
                                   )}
                                 </button>
-                                {imageCard.backgroundImage.enabled && imageCard.backgroundImage.path ? (
+                                {imageCardHasBackgroundAsset ? (
                                   <button
                                     type="button"
                                     disabled={imageCardBgRemoveBusy}
@@ -4637,16 +4650,33 @@ export function DashboardGuildPageClient({
                       : null}
 
                     {!welcomeEnabled ? (
-                      <button
-                        type="button"
-                        className="absolute inset-0 z-[5] flex cursor-pointer flex-col items-center justify-center gap-2 bg-zinc-950/55 px-5 text-center outline-none backdrop-blur-[2px] focus-visible:ring-2 focus-visible:ring-[var(--ring)] focus-visible:ring-offset-2 focus-visible:ring-offset-[rgba(9,9,15,0.96)]"
-                        aria-label={welcomeModuleCopy.welcomeDisabledOverlayHint}
-                        onClick={() => setWelcomeEnabled(true)}
-                      >
-                        <span className="max-w-sm text-[13px] font-medium leading-snug text-zinc-100/95 drop-shadow-[0_1px_8px_rgba(0,0,0,0.55)]">
-                          {welcomeModuleCopy.welcomeDisabledOverlayHint}
-                        </span>
-                      </button>
+                      <>
+                        <button
+                          type="button"
+                          className="absolute inset-0 z-[5] cursor-pointer border-0 bg-transparent p-0 shadow-none outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)] focus-visible:ring-offset-2 focus-visible:ring-offset-[rgba(9,9,15,0.96)]"
+                          aria-label={welcomeModuleCopy.welcomeDisabledOverlayHint}
+                          onClick={() => setWelcomeEnabled(true)}
+                        />
+                        <div
+                          className="pointer-events-none absolute left-1/2 top-1/2 z-[6] max-w-[min(92%,22rem)] -translate-x-1/2 -translate-y-1/2 px-3"
+                          role="status"
+                        >
+                          <p
+                            className="px-[18px] py-2.5 text-center text-[13px] font-medium leading-snug text-zinc-100/95"
+                            style={{
+                              background: "rgba(20, 18, 30, 0.58)",
+                              backdropFilter: "blur(18px) saturate(140%)",
+                              WebkitBackdropFilter: "blur(18px) saturate(140%)",
+                              border: "1px solid rgba(255,255,255,0.12)",
+                              borderRadius: "9999px",
+                              boxShadow:
+                                "0 10px 32px rgba(0,0,0,0.28), inset 0 1px 0 rgba(255,255,255,0.1)",
+                            }}
+                          >
+                            {welcomeModuleCopy.welcomeDisabledOverlayHint}
+                          </p>
+                        </div>
+                      </>
                     ) : null}
                     </div>
                   </CollapsibleSettingsSection>

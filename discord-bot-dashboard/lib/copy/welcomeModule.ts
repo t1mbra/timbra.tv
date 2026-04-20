@@ -10,7 +10,7 @@ export const welcomeModuleCopy = {
   deliveryDmTab: "ЛС",
   deliveryDmUnavailableTitle: "ЛС появится позже",
   deliveryModeTablistAria: "Способ отправки приветствия: канал или личные сообщения",
-  welcomeDisabledOverlayHint: "Приветствие выключено. Нажмите, чтобы включить.",
+  welcomeDisabledOverlayHint: "Функция выключена. Нажми, чтобы включить",
   sidebarWelcomeToggleAria: "Включить или выключить приветствие для новых участников",
   skipBotAccountsTitle: "Не приветствовать ботов",
   skipBotAccountsHelp: "Не отправлять приветствие аккаунтам с пометкой «бот».",
