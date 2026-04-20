@@ -271,6 +271,9 @@ async function drawBackground(ctx: SKRSContext2D, input: ImageCardGenerationInpu
       /* пусто */
     }
   }
+  const fallbackBg = parseHex(input.backgroundColor, "#12131a");
+  ctx.fillStyle = rgbToCss(fallbackBg);
+  ctx.fillRect(0, 0, W, H);
   ctx.restore();
 }
 

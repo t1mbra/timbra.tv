@@ -588,7 +588,8 @@ async function sendWelcome(member, config) {
 }
 
 /**
- * Приветствие в ЛС + опционально отдельный текст в канал (только текст, без embed/imageCard).
+ * Приветствие в ЛС (только текст из welcomeDmMessage / fallback message).
+ * Канальная копия с embed/imageCard выполняется через sendWelcome при режиме both.
  * @param {import('discord.js').GuildMember} member
  * @param {Record<string, unknown>} config
  */
@@ -622,57 +623,6 @@ async function sendWelcomeDm(member, config) {
         typeof code === "number" ? `(code ${code})` : ""
       );
     }
-  }
-
-  if (config.welcomeDmAlsoSendToChannel !== true) return;
-
-  const chRaw = config.welcomeDmChannelId;
-  const channelId = typeof chRaw === "string" ? chRaw.trim() : "";
-  if (!channelId) {
-    console.warn("[welcome] channel copy skipped: welcomeDmChannelId missing");
-    return;
-  }
-  if (!isNonEmptySnowflake(channelId)) {
-    console.warn("[welcome] channel copy skipped: welcomeDmChannelId is not a valid snowflake");
-    return;
-  }
-
-  const chMsgRaw =
-    typeof config.welcomeDmChannelMessage === "string"
-      ? config.welcomeDmChannelMessage
-      : typeof config.message === "string"
-        ? config.message
-        : "";
-  const channelText = resolveTemplate(chMsgRaw, ctx).trim();
-  if (!channelText) {
-    console.log("[welcome] channel copy skipped: empty welcomeDmChannelMessage", {
-      member: member.user.tag,
-    });
-    return;
-  }
-
-  /** @type {import('discord.js').GuildChannel | import('discord.js').ThreadChannel | null} */
-  let channel = null;
-  try {
-    const fetched = await member.guild.channels.fetch(channelId);
-    channel = fetched;
-  } catch (err) {
-    const e = /** @type {Error} */ (err);
-    console.warn(`[welcome] channel copy: could not fetch channel ${channelId}:`, e.message);
-    return;
-  }
-
-  if (!channel || !channel.isTextBased()) {
-    console.warn(`[welcome] channel copy: channel ${channelId} is not text-sendable`);
-    return;
-  }
-
-  try {
-    await channel.send({ content: channelText });
-    console.log(`[welcome] channel copy sent for ${member.user.tag} (channel ${channelId})`);
-  } catch (err) {
-    const e = /** @type {Error} */ (err);
-    console.warn(`[welcome] channel copy send failed for ${member.user.tag}:`, e.message);
   }
 }
 
@@ -714,10 +664,15 @@ async function handleGuildMemberAdd(member) {
     }
 
     const modeRaw = config.welcomeDeliveryMode;
-    const mode =
-      typeof modeRaw === "string" ? modeRaw.trim().toLowerCase() : "channel";
+    let mode = typeof modeRaw === "string" ? modeRaw.trim().toLowerCase() : "channel";
+    if (mode === "dm" && config.welcomeDmAlsoSendToChannel === true) {
+      mode = "both";
+    }
     if (mode === "dm") {
       await sendWelcomeDm(member, config);
+    } else if (mode === "both") {
+      await sendWelcomeDm(member, config);
+      await sendWelcome(member, config);
     } else {
       await sendWelcome(member, config);
     }

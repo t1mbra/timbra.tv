@@ -21,8 +21,8 @@ export type GuildConfig = {
   embedImageDataUrl: string;
   embedFields: { name: string; value: string; inline: boolean }[];
   imageCard?: ImageCardGuildConfigMerged;
-  /** Куда слать приветствие: в канал (как раньше) или в ЛС. Отсутствие = channel. */
-  welcomeDeliveryMode?: "channel" | "dm";
+  /** Куда слать приветствие: канал, ЛС или оба. Отсутствие = channel. */
+  welcomeDeliveryMode?: "channel" | "dm" | "both";
   /** Текст ЛС-приветствия (только текст; плейсхолдеры как у channel message). */
   welcomeDmMessage?: string;
   /** Дублировать ли отдельным текстом в канал сервера (режим ЛС). */

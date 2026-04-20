@@ -19,7 +19,7 @@ const defaultGuildConfig: GuildConfig = {
   humanRoleId: "",
   botRoleId: "",
   skipBotAccounts: true,
-  welcomeDeliveryMode: "channel",
+  welcomeDeliveryMode: "channel" as const,
   welcomeDmMessage: "Добро пожаловать, {user}! ✨",
   welcomeDmAlsoSendToChannel: false,
   welcomeDmChannelId: "",
@@ -39,6 +39,21 @@ const defaultGuildConfig: GuildConfig = {
   imageCard: mergeImageCard(undefined, { availableFontKeys: availableImageCardFontKeys() }),
 };
 
+function normalizeWelcomeDeliveryMode(
+  g: Partial<GuildConfig> | undefined
+): "channel" | "dm" | "both" {
+  const raw =
+    typeof g?.welcomeDeliveryMode === "string"
+      ? g.welcomeDeliveryMode.trim().toLowerCase()
+      : "";
+  if (raw === "both") return "both";
+  if (raw === "dm") {
+    if (g?.welcomeDmAlsoSendToChannel === true) return "both";
+    return "dm";
+  }
+  return "channel";
+}
+
 function mergeDeliveryWithDefaults(
   g: Partial<GuildConfig> | undefined,
   baseMessage: string,
@@ -51,13 +66,12 @@ function mergeDeliveryWithDefaults(
   | "welcomeDmChannelId"
   | "welcomeDmChannelMessage"
 > {
-  const mode: "channel" | "dm" =
-    g && g.welcomeDeliveryMode === "dm" ? "dm" : "channel";
+  const mode = normalizeWelcomeDeliveryMode(g);
   return {
     welcomeDeliveryMode: mode,
     welcomeDmMessage:
       typeof g?.welcomeDmMessage === "string" ? g.welcomeDmMessage : baseMessage,
-    welcomeDmAlsoSendToChannel: g?.welcomeDmAlsoSendToChannel === true,
+    welcomeDmAlsoSendToChannel: mode === "both",
     welcomeDmChannelId:
       typeof g?.welcomeDmChannelId === "string" ? g.welcomeDmChannelId : baseChannelId,
     welcomeDmChannelMessage:

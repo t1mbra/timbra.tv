@@ -360,6 +360,9 @@ async function drawBackground(ctx, input) {
       /* пусто */
     }
   }
+  const fallbackBg = parseHex(input.backgroundColor, "#3b2065");
+  ctx.fillStyle = rgbToCss(fallbackBg);
+  ctx.fillRect(0, 0, W, H);
   ctx.restore();
 }
 

@@ -158,12 +158,15 @@ export async function POST(
     typeof body.welcomeDeliveryMode === "string"
       ? body.welcomeDeliveryMode.trim().toLowerCase()
       : "channel";
-  const isDmTest = deliveryRaw === "dm";
+  const deliveryMode: "channel" | "dm" | "both" =
+    deliveryRaw === "both" ? "both" : deliveryRaw === "dm" ? "dm" : "channel";
+  const needDm = deliveryMode === "dm" || deliveryMode === "both";
+  const needChannel = deliveryMode === "channel" || deliveryMode === "both";
 
   let channelId = "";
   let welcomeStyle: WelcomeStyle | undefined;
 
-  if (!isDmTest) {
+  if (needChannel) {
     channelId = body.channelId?.trim() ?? "";
     if (!channelId || !SNOWFLAKE_RE.test(channelId)) {
       return NextResponse.json(
@@ -236,7 +239,7 @@ export async function POST(
     "Content-Type": "application/json",
   };
 
-  if (isDmTest) {
+  if (needDm) {
     const dmRaw = typeof body.welcomeDmMessage === "string" ? body.welcomeDmMessage : "";
     const content = resolveTestVariables(dmRaw).trim();
     if (!content) {
@@ -357,10 +360,22 @@ export async function POST(
       );
     }
 
-    return NextResponse.json({
-      success: true,
-      message: "Тестовое сообщение отправлено вам в личку от бота",
-    });
+    if (deliveryMode === "dm") {
+      return NextResponse.json({
+        success: true,
+        message: "Тестовое сообщение отправлено вам в личку от бота",
+      });
+    }
+  }
+
+  if (!needChannel || welcomeStyle === undefined) {
+    return NextResponse.json(
+      {
+        success: false,
+        message: "Некорректный режим отправки теста",
+      },
+      { status: 400 }
+    );
   }
 
   if (welcomeStyle === "imageCard") {
