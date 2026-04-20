@@ -53,7 +53,11 @@ import { ColorPopover } from "../../components/ColorPopover";
 import { WelcomeCardPreviewFontFaces } from "../../components/WelcomeCardPreviewFontFaces";
 import { CollapsibleSettingsSection } from "../../components/CollapsibleSettingsSection";
 import { CompactSwitch } from "../../components/CompactSwitch";
-import { GlassSegmentedControl } from "../../components/GlassSegmentedControl";
+import {
+  GlassIconSegmentedGroup,
+  GlassSegmentedControl,
+  GLASS_TOOLBAR_HIT_TRANSITION,
+} from "../../components/GlassSegmentedControl";
 import { SidebarServerSwitcher } from "../../components/SidebarServerSwitcher";
 import { UserMenu } from "../../components/usermenu";
 import { welcomeModuleCopy } from "@/lib/copy/welcomeModule";
@@ -548,9 +552,6 @@ const IMAGE_CARD_SOLID_PREVIEW_BACKING: CSSProperties = {
 const IMAGE_CARD_IMAGE_EMPTY_PREVIEW_LAYER: CSSProperties = {
   ...IMAGE_CARD_SOLID_PREVIEW_BACKING,
 };
-
-const WELCOME_SEGMENT_ICON_MOTION =
-  "transition-[background-color,box-shadow,color,transform] duration-200 ease-[cubic-bezier(0.2,0.8,0.2,1)] motion-reduce:transition-none";
 
 function IconTrashCompact(props: { className?: string }) {
   return (
@@ -3411,7 +3412,7 @@ export function DashboardGuildPageClient({
   const viewerName = bootstrap?.viewer?.name || "Пользователь";
   const viewerAvatarUrl = bootstrap?.viewer?.avatarUrl ?? null;
   const toolbarButtonClass = (type: PickerType) =>
-    `inline-flex size-8 shrink-0 cursor-pointer items-center justify-center rounded-full transition ${
+    `inline-flex size-8 shrink-0 cursor-pointer items-center justify-center rounded-full ${GLASS_TOOLBAR_HIT_TRANSITION} ${
       openPicker === type
         ? "bg-white/14 text-zinc-50 shadow-[inset_0_1px_0_rgba(255,255,255,0.18)]"
         : "text-zinc-400 hover:bg-white/[0.08] hover:text-zinc-200"
@@ -3639,42 +3640,29 @@ export function DashboardGuildPageClient({
                               Будет отправлено над стилем приветствия
                             </p>
                           </div>
-                          <div
-                            className="inline-flex shrink-0 self-start rounded-full bg-black/[0.26] p-0.5 sm:mt-0.5"
-                            role="tablist"
-                            aria-label="Режим редактора: визуальный или исходный текст"
-                          >
-                            <button
-                              type="button"
-                              role="tab"
-                              aria-selected={messageEditorMode === "preview"}
-                              aria-label="Визуальный редактор"
-                              title="Визуальный редактор"
-                              onClick={() => setMessageEditorMode("preview")}
-                              className={`inline-flex size-8 cursor-pointer items-center justify-center rounded-full ${WELCOME_SEGMENT_ICON_MOTION} focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)] focus-visible:ring-offset-2 focus-visible:ring-offset-[rgba(9,9,15,0.96)] ${
-                                messageEditorMode === "preview"
-                                  ? "bg-white/[0.16] text-zinc-100 shadow-[inset_0_1px_0_rgba(255,255,255,0.18)]"
-                                  : "text-zinc-500 hover:text-zinc-300"
-                              }`}
-                            >
-                              <IconWelcomePreviewMode className="h-4 w-4" />
-                            </button>
-                            <button
-                              type="button"
-                              role="tab"
-                              aria-selected={messageEditorMode === "raw"}
-                              aria-label="Исходный текст"
-                              title="Исходный текст"
-                              onClick={() => setMessageEditorMode("raw")}
-                              className={`inline-flex size-8 cursor-pointer items-center justify-center rounded-full ${WELCOME_SEGMENT_ICON_MOTION} focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)] focus-visible:ring-offset-2 focus-visible:ring-offset-[rgba(9,9,15,0.96)] ${
-                                messageEditorMode === "raw"
-                                  ? "bg-white/[0.16] text-zinc-100 shadow-[inset_0_1px_0_rgba(255,255,255,0.18)]"
-                                  : "text-zinc-500 hover:text-zinc-300"
-                              }`}
-                            >
-                              <IconWelcomeRawMode className="h-4 w-4" />
-                            </button>
-                          </div>
+                          <GlassIconSegmentedGroup
+                            variant="tabs"
+                            className="sm:mt-0.5"
+                            value={messageEditorMode}
+                            onValueChange={(next) =>
+                              setMessageEditorMode(next as WelcomeMessageEditorMode)
+                            }
+                            ariaLabel="Режим редактора: визуальный или исходный текст"
+                            options={[
+                              {
+                                value: "preview",
+                                title: "Визуальный редактор",
+                                ariaLabel: "Визуальный редактор",
+                                label: <IconWelcomePreviewMode className="h-4 w-4" />,
+                              },
+                              {
+                                value: "raw",
+                                title: "Исходный текст",
+                                ariaLabel: "Исходный текст",
+                                label: <IconWelcomeRawMode className="h-4 w-4" />,
+                              },
+                            ]}
+                          />
                         </div>
                         <div className="relative min-h-28 px-3 pb-3 sm:px-3.5 sm:pb-3.5">
                           {messageEditorMode === "raw" ? (
@@ -4218,7 +4206,7 @@ export function DashboardGuildPageClient({
                                   aria-expanded={imageCardTypographyOpen}
                                   aria-haspopup="true"
                                   onClick={() => setImageCardTypographyOpen((o) => !o)}
-                                  className={`inline-flex size-8 items-center justify-center rounded-full text-[11px] font-semibold transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)] ${
+                                  className={`inline-flex size-8 items-center justify-center rounded-full text-[11px] font-semibold ${GLASS_TOOLBAR_HIT_TRANSITION} focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)] ${
                                     imageCardTypographyOpen
                                       ? "bg-white/[0.14] text-zinc-50 shadow-[inset_0_1px_0_rgba(255,255,255,0.18)]"
                                       : "text-zinc-400 hover:bg-white/[0.08] hover:text-zinc-200"
@@ -4290,44 +4278,32 @@ export function DashboardGuildPageClient({
                                     </p>
                                   </li>
                                   <li className="px-2 py-2">
-                                    <div
-                                      className="inline-flex w-full items-center justify-center gap-0.5 rounded-full border border-white/[0.08] bg-black/25 p-0.5"
-                                      role="group"
-                                      aria-label="Размер текста"
-                                    >
-                                      {(
+                                    <GlassSegmentedControl
+                                      dense
+                                      className="w-full"
+                                      trackClassName="w-full flex-nowrap justify-center border border-white/[0.08] bg-black/25"
+                                      value={
+                                        imageCardActiveField === "title"
+                                          ? imageCard.titleStyle.textSize
+                                          : imageCard.subtitleStyle.textSize
+                                      }
+                                      onValueChange={(next) =>
+                                        patchImageCardFieldStyle(imageCardActiveField, {
+                                          textSize: next as ImageCardFieldStyleMerged["textSize"],
+                                        })
+                                      }
+                                      ariaLabel="Размер текста"
+                                      options={(
                                         [
                                           { id: "s" as const, label: "S" },
                                           { id: "m" as const, label: "M" },
                                           { id: "l" as const, label: "L" },
                                         ] as const
-                                      ).map((sz) => {
-                                        const cur =
-                                          imageCardActiveField === "title"
-                                            ? imageCard.titleStyle.textSize
-                                            : imageCard.subtitleStyle.textSize;
-                                        return (
-                                          <button
-                                            key={sz.id}
-                                            type="button"
-                                            title={`Размер: ${sz.label}`}
-                                            aria-pressed={cur === sz.id}
-                                            onClick={() =>
-                                              patchImageCardFieldStyle(imageCardActiveField, {
-                                                textSize: sz.id,
-                                              })
-                                            }
-                                            className={`ds-liquid-list-item min-h-[1.5rem] min-w-[1.5rem] flex-1 rounded-full px-2 py-1 text-center text-[11px] font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)] ${
-                                              cur === sz.id
-                                                ? "bg-[var(--brand)]/24 text-zinc-100"
-                                                : "text-zinc-300 hover:bg-white/[0.08]"
-                                            }`}
-                                          >
-                                            {sz.label}
-                                          </button>
-                                        );
-                                      })}
-                                    </div>
+                                      ).map((sz) => ({
+                                        value: sz.id,
+                                        label: sz.label,
+                                      }))}
+                                    />
                                   </li>
                                   <li className="px-2 py-2">
                                     <div
@@ -4352,7 +4328,7 @@ export function DashboardGuildPageClient({
                                             fontWeight: st.fontWeight === "bold" ? "regular" : "bold",
                                           });
                                         }}
-                                        className={`ds-liquid-list-item inline-flex size-8 items-center justify-center rounded-full border border-white/[0.08] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)] ${
+                                        className={`ds-liquid-list-item inline-flex size-8 items-center justify-center rounded-full border border-white/[0.08] ${GLASS_TOOLBAR_HIT_TRANSITION} focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)] ${
                                           (imageCardActiveField === "title"
                                             ? imageCard.titleStyle.fontWeight
                                             : imageCard.subtitleStyle.fontWeight) === "bold"
@@ -4379,7 +4355,7 @@ export function DashboardGuildPageClient({
                                             fontStyle: st.fontStyle === "italic" ? "normal" : "italic",
                                           });
                                         }}
-                                        className={`ds-liquid-list-item inline-flex size-8 items-center justify-center rounded-full border border-white/[0.08] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)] ${
+                                        className={`ds-liquid-list-item inline-flex size-8 items-center justify-center rounded-full border border-white/[0.08] ${GLASS_TOOLBAR_HIT_TRANSITION} focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)] ${
                                           (imageCardActiveField === "title"
                                             ? imageCard.titleStyle.fontStyle
                                             : imageCard.subtitleStyle.fontStyle) === "italic"
@@ -4402,60 +4378,44 @@ export function DashboardGuildPageClient({
                           aria-label="Фон карточки приветствия"
                         >
                           <div className="flex flex-nowrap items-center gap-2 overflow-x-auto [scrollbar-width:thin]">
-                            <div
-                              className="inline-flex shrink-0 items-center gap-0.5 rounded-full bg-black/[0.22] p-0.5"
-                              role="group"
-                              aria-label="Режим фона"
-                            >
-                              <button
-                                type="button"
-                                aria-label="Сплошной"
-                                title="Сплошной"
-                                aria-pressed={imageCard.backgroundMode === "solid"}
-                                onClick={() =>
-                                  setImageCard((c) => ({ ...c, backgroundMode: "solid" }))
-                                }
-                                className={`inline-flex size-8 items-center justify-center rounded-full ${WELCOME_SEGMENT_ICON_MOTION} focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)] ${
-                                  imageCard.backgroundMode === "solid"
-                                    ? "bg-white/[0.16] text-zinc-50"
-                                    : "text-zinc-500 hover:text-zinc-300"
-                                }`}
-                              >
-                                <PaintBucket className="size-4" strokeWidth={1.75} aria-hidden />
-                              </button>
-                              <button
-                                type="button"
-                                aria-label="Градиент"
-                                title="Градиент"
-                                aria-pressed={imageCard.backgroundMode === "gradient"}
-                                onClick={() =>
-                                  setImageCard((c) => ({ ...c, backgroundMode: "gradient" }))
-                                }
-                                className={`inline-flex size-8 items-center justify-center rounded-full ${WELCOME_SEGMENT_ICON_MOTION} focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)] ${
-                                  imageCard.backgroundMode === "gradient"
-                                    ? "bg-white/[0.16] text-zinc-50"
-                                    : "text-zinc-500 hover:text-zinc-300"
-                                }`}
-                              >
-                                <Sparkles className="size-4" strokeWidth={1.75} aria-hidden />
-                              </button>
-                              <button
-                                type="button"
-                                aria-label="Изображение"
-                                title="Изображение"
-                                aria-pressed={imageCard.backgroundMode === "image"}
-                                onClick={() =>
-                                  setImageCard((c) => ({ ...c, backgroundMode: "image" }))
-                                }
-                                className={`inline-flex size-8 items-center justify-center rounded-full ${WELCOME_SEGMENT_ICON_MOTION} focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)] ${
-                                  imageCard.backgroundMode === "image"
-                                    ? "bg-white/[0.16] text-zinc-50"
-                                    : "text-zinc-500 hover:text-zinc-300"
-                                }`}
-                              >
-                                <ImageIcon className="size-4" strokeWidth={1.75} aria-hidden />
-                              </button>
-                            </div>
+                            <GlassIconSegmentedGroup
+                              variant="toolbar"
+                              value={imageCard.backgroundMode}
+                              onValueChange={(next) =>
+                                setImageCard((c) => ({
+                                  ...c,
+                                  backgroundMode: next as ImageCardConfig["backgroundMode"],
+                                }))
+                              }
+                              ariaLabel="Режим фона"
+                              trackClassName="bg-black/[0.22]"
+                              options={[
+                                {
+                                  value: "solid",
+                                  title: "Сплошной",
+                                  ariaLabel: "Сплошной",
+                                  label: (
+                                    <PaintBucket className="size-4" strokeWidth={1.75} aria-hidden />
+                                  ),
+                                },
+                                {
+                                  value: "gradient",
+                                  title: "Градиент",
+                                  ariaLabel: "Градиент",
+                                  label: (
+                                    <Sparkles className="size-4" strokeWidth={1.75} aria-hidden />
+                                  ),
+                                },
+                                {
+                                  value: "image",
+                                  title: "Изображение",
+                                  ariaLabel: "Изображение",
+                                  label: (
+                                    <ImageIcon className="size-4" strokeWidth={1.75} aria-hidden />
+                                  ),
+                                },
+                              ]}
+                            />
 
                             {imageCard.backgroundMode === "solid" ? (
                               <>
@@ -4531,50 +4491,46 @@ export function DashboardGuildPageClient({
                                   avoidRect={imageCardTextBandRect}
                                   zIndex={260}
                                 />
-                                <div
-                                  className="inline-flex shrink-0 items-center gap-0.5 rounded-full bg-black/[0.22] p-0.5"
-                                  role="group"
-                                  aria-label="Стиль градиента"
-                                >
-                                  <button
-                                    type="button"
-                                    aria-pressed={imageCard.backgroundGradientMode === "diagonal"}
-                                    aria-label="Наискось"
-                                    title="Наискось"
-                                    onClick={() =>
-                                      setImageCard((c) => ({
-                                        ...c,
-                                        backgroundGradientMode: "diagonal",
-                                      }))
-                                    }
-                                    className={`inline-flex size-8 items-center justify-center rounded-full ${WELCOME_SEGMENT_ICON_MOTION} focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)] ${
-                                      imageCard.backgroundGradientMode === "diagonal"
-                                        ? "bg-white/[0.14] text-zinc-50 ring-1 ring-white/20"
-                                        : "text-zinc-400 hover:text-zinc-200"
-                                    }`}
-                                  >
-                                    <ArrowDownRight className="size-4" strokeWidth={1.85} aria-hidden />
-                                  </button>
-                                  <button
-                                    type="button"
-                                    aria-pressed={imageCard.backgroundGradientMode === "radial"}
-                                    aria-label="От центра"
-                                    title="От центра"
-                                    onClick={() =>
-                                      setImageCard((c) => ({
-                                        ...c,
-                                        backgroundGradientMode: "radial",
-                                      }))
-                                    }
-                                    className={`inline-flex size-8 items-center justify-center rounded-full ${WELCOME_SEGMENT_ICON_MOTION} focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)] ${
-                                      imageCard.backgroundGradientMode === "radial"
-                                        ? "bg-white/[0.14] text-zinc-50 ring-1 ring-white/20"
-                                        : "text-zinc-400 hover:text-zinc-200"
-                                    }`}
-                                  >
-                                    <CircleDot className="size-4" strokeWidth={1.85} aria-hidden />
-                                  </button>
-                                </div>
+                                <GlassIconSegmentedGroup
+                                  variant="toolbar"
+                                  value={imageCard.backgroundGradientMode}
+                                  onValueChange={(next) =>
+                                    setImageCard((c) => ({
+                                      ...c,
+                                      backgroundGradientMode: next as
+                                        | "diagonal"
+                                        | "radial",
+                                    }))
+                                  }
+                                  ariaLabel="Стиль градиента"
+                                  trackClassName="bg-black/[0.22]"
+                                  options={[
+                                    {
+                                      value: "diagonal",
+                                      title: "Наискось",
+                                      ariaLabel: "Наискось",
+                                      label: (
+                                        <ArrowDownRight
+                                          className="size-4"
+                                          strokeWidth={1.85}
+                                          aria-hidden
+                                        />
+                                      ),
+                                    },
+                                    {
+                                      value: "radial",
+                                      title: "От центра",
+                                      ariaLabel: "От центра",
+                                      label: (
+                                        <CircleDot
+                                          className="size-4"
+                                          strokeWidth={1.85}
+                                          aria-hidden
+                                        />
+                                      ),
+                                    },
+                                  ]}
+                                />
                                 <label htmlFor="ic-bg-op-grad" className="sr-only">
                                   Непрозрачность фона
                                 </label>
@@ -4918,45 +4874,35 @@ export function DashboardGuildPageClient({
                               {welcomeModuleCopy.deliveryDmPrivacyNote}
                             </p>
                           </div>
-                          <div
-                            className="inline-flex shrink-0 self-start rounded-full bg-black/[0.26] p-0.5 sm:mt-0.5"
-                            role="tablist"
-                            aria-label="Режим редактора: визуальный или исходный текст"
-                          >
-                            <button
-                              type="button"
-                              role="tab"
-                              aria-selected={dmMessageEditorMode === "preview"}
-                              aria-label="Визуальный редактор"
-                              title="Визуальный редактор"
-                              onClick={() => {
+                          <GlassIconSegmentedGroup
+                            variant="tabs"
+                            className="sm:mt-0.5"
+                            value={dmMessageEditorMode}
+                            onValueChange={(next) => {
+                              const mode = next as WelcomeMessageEditorMode;
+                              if (mode === "preview") {
                                 setDmMessageEditorMode("preview");
                                 setDmPreviewEditorSyncSeq((n) => n + 1);
-                              }}
-                              className={`inline-flex size-8 cursor-pointer items-center justify-center rounded-full ${WELCOME_SEGMENT_ICON_MOTION} focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)] focus-visible:ring-offset-2 focus-visible:ring-offset-[rgba(9,9,15,0.96)] ${
-                                dmMessageEditorMode === "preview"
-                                  ? "bg-white/[0.16] text-zinc-100 shadow-[inset_0_1px_0_rgba(255,255,255,0.18)]"
-                                  : "text-zinc-500 hover:text-zinc-300"
-                              }`}
-                            >
-                              <IconWelcomePreviewMode className="h-4 w-4" />
-                            </button>
-                            <button
-                              type="button"
-                              role="tab"
-                              aria-selected={dmMessageEditorMode === "raw"}
-                              aria-label="Исходный текст"
-                              title="Исходный текст"
-                              onClick={() => setDmMessageEditorMode("raw")}
-                              className={`inline-flex size-8 cursor-pointer items-center justify-center rounded-full ${WELCOME_SEGMENT_ICON_MOTION} focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)] focus-visible:ring-offset-2 focus-visible:ring-offset-[rgba(9,9,15,0.96)] ${
-                                dmMessageEditorMode === "raw"
-                                  ? "bg-white/[0.16] text-zinc-100 shadow-[inset_0_1px_0_rgba(255,255,255,0.18)]"
-                                  : "text-zinc-500 hover:text-zinc-300"
-                              }`}
-                            >
-                              <IconWelcomeRawMode className="h-4 w-4" />
-                            </button>
-                          </div>
+                              } else {
+                                setDmMessageEditorMode("raw");
+                              }
+                            }}
+                            ariaLabel="Режим редактора: визуальный или исходный текст"
+                            options={[
+                              {
+                                value: "preview",
+                                title: "Визуальный редактор",
+                                ariaLabel: "Визуальный редактор",
+                                label: <IconWelcomePreviewMode className="h-4 w-4" />,
+                              },
+                              {
+                                value: "raw",
+                                title: "Исходный текст",
+                                ariaLabel: "Исходный текст",
+                                label: <IconWelcomeRawMode className="h-4 w-4" />,
+                              },
+                            ]}
+                          />
                         </div>
                         <div className="relative min-h-28 px-3 pb-3 sm:px-3.5 sm:pb-3.5">
                           {dmMessageEditorMode === "raw" ? (
