@@ -43,7 +43,9 @@ export type ImageCardGuildConfigMerged = {
   fontStyle: ImageCardFontStyle;
   overlayColor: string;
   overlayOpacity: number;
-  backgroundMode: "gradient" | "solid" | "image";
+  backgroundMode: "gradient" | "solid" | "image" | "transparent";
+  /** Непрозрачность слоя фона (градиент / заливка / изображение). Режим transparent игнорирует. */
+  backgroundOpacity: number;
   backgroundColor: string;
   accentColor: string;
   /** Фон как data URL (приоритетнее файла на диске). */
@@ -75,6 +77,7 @@ const defaults: ImageCardGuildConfigMerged = {
   overlayColor: DEFAULT_OVERLAY_COLOR,
   overlayOpacity: DEFAULT_OVERLAY_OPACITY,
   backgroundMode: "gradient",
+  backgroundOpacity: 1,
   backgroundColor: "#12131a",
   accentColor: "#8038ce",
   backgroundImageDataUrl: "",
@@ -154,6 +157,7 @@ export function imageCardsEqual(a: ImageCardGuildConfigMerged, b: ImageCardGuild
     a.overlayColor === b.overlayColor &&
     a.overlayOpacity === b.overlayOpacity &&
     a.backgroundMode === b.backgroundMode &&
+    a.backgroundOpacity === b.backgroundOpacity &&
     a.backgroundColor === b.backgroundColor &&
     a.accentColor === b.accentColor &&
     a.backgroundImageDataUrl === b.backgroundImageDataUrl &&
@@ -180,6 +184,7 @@ export function mergeImageCard(
   if (!raw || typeof raw !== "object" || Array.isArray(raw)) {
     const base = {
       ...defaults,
+      backgroundOpacity: defaults.backgroundOpacity,
       backgroundImageDataUrl: "",
       backgroundImage: { ...defaults.backgroundImage },
       titleStyle: { ...defaults.titleStyle },
@@ -192,9 +197,10 @@ export function mergeImageCard(
   }
   const o = raw as Record<string, unknown>;
 
-  let backgroundMode: "gradient" | "solid" | "image" = "gradient";
+  let backgroundMode: "gradient" | "solid" | "image" | "transparent" = "gradient";
   if (o.backgroundMode === "solid") backgroundMode = "solid";
   else if (o.backgroundMode === "image") backgroundMode = "image";
+  else if (o.backgroundMode === "transparent") backgroundMode = "transparent";
   else if (o.backgroundMode === "gradient") backgroundMode = "gradient";
 
   const titleRaw = o.titleStyle && typeof o.titleStyle === "object" && !Array.isArray(o.titleStyle)
@@ -283,6 +289,10 @@ export function mergeImageCard(
     overlayColor: typeof o.overlayColor === "string" ? o.overlayColor : defaults.overlayColor,
     overlayOpacity: clamp01(o.overlayOpacity, defaults.overlayOpacity),
     backgroundMode,
+    backgroundOpacity: clamp01(
+      o.backgroundOpacity,
+      defaults.backgroundOpacity
+    ),
     backgroundColor:
       typeof o.backgroundColor === "string" ? o.backgroundColor : defaults.backgroundColor,
     accentColor: typeof o.accentColor === "string" ? o.accentColor : defaults.accentColor,

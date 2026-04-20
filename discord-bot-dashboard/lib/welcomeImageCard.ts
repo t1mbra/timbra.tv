@@ -24,7 +24,7 @@ import {
 import { imageCardGradientEndHex } from "./imageCardGradient";
 import { canvasFontFamilyName, ensureWelcomeCardFontsRegistered } from "./registerWelcomeCardFonts";
 
-export type ImageCardBackgroundMode = "gradient" | "solid" | "image";
+export type ImageCardBackgroundMode = "gradient" | "solid" | "image" | "transparent";
 
 export type ImageCardRenderableFieldStyle = {
   textSize: ImageCardTextSizePreset;
@@ -46,6 +46,8 @@ export type ImageCardGenerationInput = {
   overlayColor: string;
   overlayOpacity: number;
   backgroundMode: ImageCardBackgroundMode;
+  /** 0..1, только слой фона (не оверлей, не текст). */
+  backgroundOpacity?: number;
   backgroundColor: string;
   accentColor: string;
   /** Приоритет над backgroundImagePath */
@@ -177,6 +179,20 @@ function drawImageCover(
 }
 
 async function drawBackground(ctx: SKRSContext2D, input: ImageCardGenerationInput): Promise<void> {
+  if (input.backgroundMode === "transparent") {
+    return;
+  }
+
+  const bgLayerAlpha = clamp01(
+    typeof input.backgroundOpacity === "number" ? input.backgroundOpacity : 1
+  );
+  if (bgLayerAlpha <= 0) {
+    return;
+  }
+
+  ctx.save();
+  ctx.globalAlpha = bgLayerAlpha;
+
   const bg = parseHex(input.backgroundColor, "#12131a");
   const dataUrl =
     typeof input.backgroundImageDataUrl === "string" ? input.backgroundImageDataUrl.trim() : "";
@@ -188,6 +204,7 @@ async function drawBackground(ctx: SKRSContext2D, input: ImageCardGenerationInpu
     try {
       const bgImg = await loadImage(dataUrl);
       drawImageCover(ctx, bgImg, 0, 0, W, H);
+      ctx.restore();
       return;
     } catch {
       /* fallback to file or gradient */
@@ -204,6 +221,7 @@ async function drawBackground(ctx: SKRSContext2D, input: ImageCardGenerationInpu
     try {
       const bgImg = await loadImage(input.backgroundImagePath);
       drawImageCover(ctx, bgImg, 0, 0, W, H);
+      ctx.restore();
       return;
     } catch {
       /* fallback */
@@ -231,6 +249,7 @@ async function drawBackground(ctx: SKRSContext2D, input: ImageCardGenerationInpu
     ctx.fillStyle = rgbToCss(bg);
   }
   ctx.fillRect(0, 0, W, H);
+  ctx.restore();
 }
 
 export async function generateWelcomeImageCardPngBuffer(

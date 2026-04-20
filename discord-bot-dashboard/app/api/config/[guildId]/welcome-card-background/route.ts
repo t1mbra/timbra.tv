@@ -252,7 +252,7 @@ export async function DELETE(
     {
       ...(prevIc && typeof prevIc === "object" ? prevIc : {}),
       backgroundImageDataUrl: "",
-      backgroundMode: "gradient",
+      backgroundMode: "transparent",
       backgroundImage: { enabled: false, path: "", filename: undefined },
     },
     { availableFontKeys: avail }

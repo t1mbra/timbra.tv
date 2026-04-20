@@ -224,9 +224,14 @@ export async function POST(
     const titleRaw = typeof ic.title === "string" ? ic.title : "Добро пожаловать";
     const subtitleRaw = typeof ic.subtitle === "string" ? ic.subtitle : "";
     const descriptionRaw = typeof ic.description === "string" ? ic.description : "";
-    let bgMode: "gradient" | "solid" | "image" = "gradient";
+    let bgMode: "gradient" | "solid" | "image" | "transparent" = "gradient";
     if (ic.backgroundMode === "solid") bgMode = "solid";
     else if (ic.backgroundMode === "image") bgMode = "image";
+    else if (ic.backgroundMode === "transparent") bgMode = "transparent";
+    const backgroundOpacity =
+      typeof ic.backgroundOpacity === "number" && !Number.isNaN(ic.backgroundOpacity)
+        ? Math.min(1, Math.max(0, ic.backgroundOpacity))
+        : 1;
     const bgColor =
       typeof ic.backgroundColor === "string" ? ic.backgroundColor : "#12131a";
     const accColor =
@@ -276,6 +281,7 @@ export async function POST(
           overlayColor,
           overlayOpacity,
           backgroundMode: bgMode,
+          backgroundOpacity,
           backgroundColor: bgColor,
           accentColor: accColor,
           backgroundImageDataUrl: backgroundImageDataUrl || undefined,

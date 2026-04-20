@@ -476,6 +476,29 @@ function IconWelcomeImagePlaceholder(props: { className?: string }) {
   );
 }
 
+/** Только превью в дашборде; в PNG не попадает */
+const IMAGE_CARD_PREVIEW_CHECKERBOARD_STYLE: CSSProperties = {
+  backgroundColor: "#131316",
+  backgroundImage: `
+    linear-gradient(45deg, rgba(255,255,255,0.055) 25%, transparent 25%),
+    linear-gradient(-45deg, rgba(255,255,255,0.055) 25%, transparent 25%),
+    linear-gradient(45deg, transparent 75%, rgba(255,255,255,0.055) 75%),
+    linear-gradient(-45deg, transparent 75%, rgba(255,255,255,0.055) 75%)`,
+  backgroundSize: "12px 12px",
+  backgroundPosition: "0 0, 0 6px, 6px -6px, -6px 0px",
+};
+
+function IconTransparentBg(props: { className?: string }) {
+  return (
+    <svg className={props.className} viewBox="0 0 24 24" aria-hidden>
+      <rect x="3" y="3" width="7.5" height="7.5" rx="1.25" fill="currentColor" opacity="0.2" />
+      <rect x="13.5" y="3" width="7.5" height="7.5" rx="1.25" fill="currentColor" opacity="0.38" />
+      <rect x="3" y="13.5" width="7.5" height="7.5" rx="1.25" fill="currentColor" opacity="0.38" />
+      <rect x="13.5" y="13.5" width="7.5" height="7.5" rx="1.25" fill="currentColor" opacity="0.2" />
+    </svg>
+  );
+}
+
 function IconTrashCompact(props: { className?: string }) {
   return (
     <svg
@@ -1491,7 +1514,6 @@ export function DashboardGuildPageClient({
     top: number;
   } | null>(null);
   const [imageCardBgUploadBusy, setImageCardBgUploadBusy] = useState(false);
-  const [imageCardBgRemoveBusy, setImageCardBgRemoveBusy] = useState(false);
   const [imageCardTypographyOpen, setImageCardTypographyOpen] = useState(false);
   const [welcomeEnabled, setWelcomeEnabled] = useState(true);
   const [skipBotAccounts, setSkipBotAccounts] = useState(true);
@@ -1907,16 +1929,6 @@ export function DashboardGuildPageClient({
       return;
     }
 
-    if (!bootstrap?.viewer) {
-      if (process.env.NODE_ENV === "development") {
-        console.debug("[dashboard resources] wait: bootstrap / viewer not ready", {
-          guildId,
-          hasBootstrap: Boolean(bootstrap),
-        });
-      }
-      return;
-    }
-
     const reqId = ++resourcesFetchGenerationRef.current;
     const controller = new AbortController();
 
@@ -1924,13 +1936,7 @@ export function DashboardGuildPageClient({
     setResourcesError("");
     setResourcesLoading(true);
 
-    if (process.env.NODE_ENV === "development") {
-      console.debug("[dashboard resources] fetch start", {
-        guildId,
-        reqId,
-        viewerId: bootstrap.viewer.id,
-      });
-    }
+    console.log("[dashboard resources] fetch start", { guildId, reqId });
 
     const loadResources = async () => {
       try {
@@ -1970,17 +1976,18 @@ export function DashboardGuildPageClient({
               : undefined,
         });
         setResourcesError("");
-        if (process.env.NODE_ENV === "development") {
-          console.debug("[dashboard resources] ok", {
-            guildId,
-            reqId,
-            channelCount: Array.isArray(data?.channels) ? data.channels.length : 0,
-          });
-        }
-      } catch {
+        console.log("[dashboard resources] ok", {
+          guildId,
+          reqId,
+          channels: Array.isArray(data.channels) ? data.channels.length : 0,
+          roles: Array.isArray(data.roles) ? data.roles.length : 0,
+          emojis: Array.isArray(data.emojis) ? data.emojis.length : 0,
+        });
+      } catch (err) {
         if (reqId !== resourcesFetchGenerationRef.current) return;
         if (controller.signal.aborted) return;
 
+        console.warn("[dashboard resources] fetch failed", { guildId, reqId, err });
         setResourcesError("Не удалось загрузить ресурсы сервера");
         setResources({ channels: [], roles: [], emojis: [], errors: undefined });
       } finally {
@@ -1996,7 +2003,7 @@ export function DashboardGuildPageClient({
       controller.abort();
       resourcesFetchGenerationRef.current += 1;
     };
-  }, [guildId, bootstrap?.viewer?.id]);
+  }, [guildId]);
 
   useEffect(() => {
     const handleOutsideClick = (event: MouseEvent) => {
@@ -2764,26 +2771,19 @@ export function DashboardGuildPageClient({
     }
   };
 
-  const handleImageCardBgRemove = async () => {
-    setImageCardBgRemoveBusy(true);
-    try {
-      await fetch(`/api/config/${guildId}/welcome-card-background`, {
-        method: "DELETE",
-        credentials: "include",
-      });
-      const next: ImageCardConfig = {
-        ...imageCard,
-        backgroundMode: "gradient",
-        backgroundImageDataUrl: "",
-        backgroundImage: { enabled: false, path: "", filename: undefined },
-      };
-      setImageCard(next);
-      setLastSavedConfig((ls) => (ls ? { ...ls, imageCard: next } : ls));
-    } catch {
-      /* сеть */
-    } finally {
-      setImageCardBgRemoveBusy(false);
-    }
+  const handleImageCardBgRemove = () => {
+    const next: ImageCardConfig = {
+      ...imageCard,
+      backgroundMode: "transparent",
+      backgroundImageDataUrl: "",
+      backgroundImage: { enabled: false, path: "", filename: undefined },
+    };
+    setImageCard(next);
+    setLastSavedConfig((ls) => (ls ? { ...ls, imageCard: next } : ls));
+    void fetch(`/api/config/${guildId}/welcome-card-background`, {
+      method: "DELETE",
+      credentials: "include",
+    }).catch(() => {});
   };
 
   useEffect(() => {
@@ -4131,6 +4131,22 @@ export function DashboardGuildPageClient({
                               >
                                 <ImageIcon className="size-4" strokeWidth={1.75} aria-hidden />
                               </button>
+                              <button
+                                type="button"
+                                aria-label="Прозрачный фон"
+                                title="Прозрачный фон"
+                                aria-pressed={imageCard.backgroundMode === "transparent"}
+                                onClick={() =>
+                                  setImageCard((c) => ({ ...c, backgroundMode: "transparent" }))
+                                }
+                                className={`inline-flex size-8 items-center justify-center rounded-full transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)] ${
+                                  imageCard.backgroundMode === "transparent"
+                                    ? "bg-white/[0.16] text-zinc-50"
+                                    : "text-zinc-500 hover:text-zinc-300"
+                                }`}
+                              >
+                                <IconTransparentBg className="size-4 text-current" />
+                              </button>
                             </div>
                             {imageCard.backgroundMode === "image" ? (
                               <div className="flex flex-wrap items-center gap-1.5">
@@ -4163,24 +4179,17 @@ export function DashboardGuildPageClient({
                                 {imageCardHasBackgroundAsset ? (
                                   <button
                                     type="button"
-                                    disabled={imageCardBgRemoveBusy}
                                     title="Удалить фон"
                                     aria-label="Удалить фон"
-                                    onClick={() => void handleImageCardBgRemove()}
-                                    className="inline-flex size-8 items-center justify-center rounded-md border-0 bg-transparent p-0 text-white/90 shadow-none transition hover:text-white hover:opacity-85 disabled:opacity-40"
+                                    onClick={handleImageCardBgRemove}
+                                    className="inline-flex size-8 items-center justify-center rounded-md border-0 bg-transparent p-0 text-white/90 shadow-none transition hover:text-white hover:opacity-85"
                                   >
-                                    {imageCardBgRemoveBusy ? (
-                                      <span
-                                        className="size-4 animate-spin rounded-full border-2 border-white/25 border-t-white/90"
-                                        aria-hidden
-                                      />
-                                    ) : (
-                                      <Trash2 className="size-4" strokeWidth={1.85} aria-hidden />
-                                    )}
+                                    <Trash2 className="size-4" strokeWidth={1.85} aria-hidden />
                                   </button>
                                 ) : null}
                               </div>
-                            ) : (
+                            ) : imageCard.backgroundMode === "gradient" ||
+                              imageCard.backgroundMode === "solid" ? (
                               <ColorPopover
                                 label="Цвет фона"
                                 triggerTitle="Цвет фона"
@@ -4191,7 +4200,31 @@ export function DashboardGuildPageClient({
                                 avoidRect={imageCardTextBandRect}
                                 zIndex={260}
                               />
-                            )}
+                            ) : null}
+                            {imageCard.backgroundMode !== "transparent" ? (
+                              <>
+                                <label htmlFor="image-card-bg-opacity-tb" className="sr-only">
+                                  Непрозрачность фона
+                                </label>
+                                <input
+                                  id="image-card-bg-opacity-tb"
+                                  type="range"
+                                  min={0}
+                                  max={100}
+                                  value={Math.round(imageCard.backgroundOpacity * 100)}
+                                  onChange={(e) => {
+                                    const v = Number(e.target.value);
+                                    setImageCard((c) => ({
+                                      ...c,
+                                      backgroundOpacity: Math.min(1, Math.max(0, v / 100)),
+                                    }));
+                                  }}
+                                  title={`Непрозрачность фона: ${Math.round(imageCard.backgroundOpacity * 100)}%`}
+                                  aria-valuetext={`${Math.round(imageCard.backgroundOpacity * 100)} процентов`}
+                                  className="h-1.5 w-[min(10rem,36vw)] cursor-pointer accent-[var(--brand)]"
+                                />
+                              </>
+                            ) : null}
                             <div className="hidden h-6 w-px bg-white/[0.08] sm:block" aria-hidden />
                             <div className="flex items-center gap-1.5">
                               <ColorPopover
@@ -4232,7 +4265,11 @@ export function DashboardGuildPageClient({
                         </div>
 
                         <div
-                          className="overflow-hidden bg-zinc-950 shadow-[0_16px_56px_rgba(0,0,0,0.38)] ring-1 ring-white/[0.09]"
+                          className={`overflow-hidden shadow-[0_16px_56px_rgba(0,0,0,0.38)] ring-1 ring-white/[0.09] ${
+                            imageCard.backgroundMode === "transparent"
+                              ? "bg-transparent"
+                              : "bg-zinc-950"
+                          }`}
                           style={{ borderRadius: IMAGE_CARD_RADIUS_PX }}
                           aria-label="Карточка приветствия"
                         >
@@ -4240,13 +4277,21 @@ export function DashboardGuildPageClient({
                             ref={imageCardAspectRef}
                             className="relative aspect-[1200/515] w-full min-h-[140px] overflow-hidden"
                           >
+                            {imageCard.backgroundMode === "transparent" ? (
+                              <div
+                                className="absolute inset-0"
+                                style={IMAGE_CARD_PREVIEW_CHECKERBOARD_STYLE}
+                                aria-hidden
+                              />
+                            ) : null}
                             {imageCard.backgroundMode === "image" && imageCardBackgroundPreviewUrl ? (
                               <img
                                 src={imageCardBackgroundPreviewUrl}
                                 alt=""
                                 className="absolute inset-0 h-full w-full object-cover"
+                                style={{ opacity: imageCard.backgroundOpacity }}
                               />
-                            ) : (
+                            ) : imageCard.backgroundMode !== "transparent" ? (
                               <div
                                 className="absolute inset-0"
                                 style={{
@@ -4254,9 +4299,10 @@ export function DashboardGuildPageClient({
                                     imageCard.backgroundMode === "gradient"
                                       ? `linear-gradient(135deg, ${imageCard.backgroundColor}, ${imageCardGradientEndHex(imageCard.backgroundColor, imageCard.accentColor)})`
                                       : imageCard.backgroundColor,
+                                  opacity: imageCard.backgroundOpacity,
                                 }}
                               />
-                            )}
+                            ) : null}
                             <div
                               className="absolute inset-0"
                               style={{
@@ -4658,19 +4704,17 @@ export function DashboardGuildPageClient({
                           onClick={() => setWelcomeEnabled(true)}
                         />
                         <div
-                          className="pointer-events-none absolute left-1/2 top-1/2 z-[6] max-w-[min(92%,22rem)] -translate-x-1/2 -translate-y-1/2 px-3"
+                          className="pointer-events-none absolute left-1/2 top-1/2 z-[6] max-w-[min(92%,17.5rem)] -translate-x-1/2 -translate-y-1/2 px-3"
                           role="status"
                         >
                           <p
-                            className="px-[18px] py-2.5 text-center text-[13px] font-medium leading-snug text-zinc-100/95"
+                            className="rounded-2xl px-3 py-1.5 text-center text-[12px] font-medium leading-snug tracking-[-0.01em] text-zinc-100/90"
                             style={{
-                              background: "rgba(20, 18, 30, 0.58)",
-                              backdropFilter: "blur(18px) saturate(140%)",
-                              WebkitBackdropFilter: "blur(18px) saturate(140%)",
-                              border: "1px solid rgba(255,255,255,0.12)",
-                              borderRadius: "9999px",
-                              boxShadow:
-                                "0 10px 32px rgba(0,0,0,0.28), inset 0 1px 0 rgba(255,255,255,0.1)",
+                              background: "rgba(28, 26, 36, 0.42)",
+                              backdropFilter: "blur(14px) saturate(150%)",
+                              WebkitBackdropFilter: "blur(14px) saturate(150%)",
+                              border: "1px solid rgba(255,255,255,0.1)",
+                              boxShadow: "inset 0 1px 0 rgba(255,255,255,0.08)",
                             }}
                           >
                             {welcomeModuleCopy.welcomeDisabledOverlayHint}

@@ -3,7 +3,11 @@ import { redirect } from "next/navigation";
 
 import { getUserManageableGuildsWithBotState } from "@/lib/getUserManageableGuildsWithBotState";
 import { listAvailableWelcomeCardFontKeys } from "@/lib/resolveImageCardFont";
-import { resolveWelcomeCardFontDir } from "@/lib/resolveWelcomeCardFontDir";
+import {
+  resolveWelcomeCardFontDir,
+  welcomeCardFontDirHasAnyFont,
+} from "@/lib/resolveWelcomeCardFontDir";
+import { DEFAULT_IMAGE_CARD_FONT } from "@/lib/welcomeCardConstants";
 
 import { DashboardGuildPageClient } from "./DashboardGuildPageClient";
 
@@ -34,7 +38,21 @@ export default async function DashboardGuildPage({
   const connectedGuilds = result.guilds.filter((g) => g.botConnected);
 
   const fontDir = resolveWelcomeCardFontDir();
-  const availableWelcomeCardFontKeys = listAvailableWelcomeCardFontKeys(fontDir);
+  if (!welcomeCardFontDirHasAnyFont(fontDir)) {
+    console.warn(
+      "[dashboard] welcome-card fonts: в каталоге нет .ttf —",
+      fontDir,
+      "проверьте shared-assets/fonts/welcome-card на Railway и при необходимости задайте WELCOME_CARD_FONT_DIR"
+    );
+  }
+  let availableWelcomeCardFontKeys = listAvailableWelcomeCardFontKeys(fontDir);
+  if (availableWelcomeCardFontKeys.length === 0) {
+    console.warn(
+      "[dashboard] welcome-card font list empty — UI fallback key:",
+      DEFAULT_IMAGE_CARD_FONT
+    );
+    availableWelcomeCardFontKeys = [DEFAULT_IMAGE_CARD_FONT];
+  }
 
   return (
     <DashboardGuildPageClient

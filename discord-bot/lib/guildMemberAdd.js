@@ -327,6 +327,12 @@ async function sendWelcome(member, config) {
     let bgMode = "gradient";
     if (ic.backgroundMode === "solid") bgMode = "solid";
     else if (ic.backgroundMode === "image") bgMode = "image";
+    else if (ic.backgroundMode === "transparent") bgMode = "transparent";
+    let backgroundOpacity =
+      typeof ic.backgroundOpacity === "number" && !Number.isNaN(ic.backgroundOpacity)
+        ? ic.backgroundOpacity
+        : 1;
+    backgroundOpacity = Math.min(1, Math.max(0, backgroundOpacity));
     const bgColor =
       typeof ic.backgroundColor === "string" ? ic.backgroundColor : "#12131a";
     const accColor =
@@ -404,6 +410,7 @@ async function sendWelcome(member, config) {
           overlayColor,
           overlayOpacity,
           backgroundMode: bgMode,
+          backgroundOpacity,
           backgroundColor: bgColor,
           accentColor: accColor,
           backgroundImageDataUrl: backgroundImageDataUrl || undefined,

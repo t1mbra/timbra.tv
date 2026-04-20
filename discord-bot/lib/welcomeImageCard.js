@@ -290,7 +290,24 @@ function drawImageCover(ctx, img, dx, dy, dWidth, dHeight) {
   ctx.drawImage(img, sx, sy, sw, sh, dx, dy, dWidth, dHeight);
 }
 
+function clampBgOpacity(n) {
+  if (typeof n !== "number" || Number.isNaN(n)) return 1;
+  return Math.min(1, Math.max(0, n));
+}
+
 async function drawBackground(ctx, input) {
+  if (input.backgroundMode === "transparent") {
+    return;
+  }
+
+  const bgLayerAlpha = clampBgOpacity(input.backgroundOpacity);
+  if (bgLayerAlpha <= 0) {
+    return;
+  }
+
+  ctx.save();
+  ctx.globalAlpha = bgLayerAlpha;
+
   const bg = parseHex(input.backgroundColor, "#12131a");
   const dataUrl =
     typeof input.backgroundImageDataUrl === "string"
@@ -304,6 +321,7 @@ async function drawBackground(ctx, input) {
     try {
       const bgImg = await loadImage(dataUrl);
       drawImageCover(ctx, bgImg, 0, 0, W, H);
+      ctx.restore();
       return;
     } catch {
       /* fallback */
@@ -321,6 +339,7 @@ async function drawBackground(ctx, input) {
     try {
       const bgImg = await loadImage(p);
       drawImageCover(ctx, bgImg, 0, 0, W, H);
+      ctx.restore();
       return;
     } catch {
       /* fallback */
@@ -348,6 +367,7 @@ async function drawBackground(ctx, input) {
     ctx.fillStyle = rgbToCss(bg);
   }
   ctx.fillRect(0, 0, W, H);
+  ctx.restore();
 }
 
 async function generateWelcomeImageCardPngBuffer(input, fontDir) {
