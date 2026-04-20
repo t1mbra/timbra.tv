@@ -150,10 +150,11 @@ function canvasFontString(style, weight, sizePx, ff) {
   return `${st} ${w} ${sizePx}px "${ff}", system-ui, sans-serif`;
 }
 
-let fontsRegistered = false;
+const registeredFontDirs = new Set();
 
 function ensureFonts(fontDir) {
-  if (fontsRegistered) return;
+  const dirKey = path.resolve(fontDir);
+  if (registeredFontDirs.has(dirKey)) return;
   for (const key of Object.keys(FONT_FILES)) {
     const full = path.join(fontDir, FONT_FILES[key]);
     if (existsSync(full)) {
@@ -166,7 +167,7 @@ function ensureFonts(fontDir) {
       console.warn("[welcomeImageCard] font file missing:", full);
     }
   }
-  fontsRegistered = true;
+  registeredFontDirs.add(dirKey);
 }
 
 function canvasFamily(key) {
@@ -194,28 +195,6 @@ function rgbaFromHex(hex, alpha, fallbackHex) {
   const c = parseHex(hex, fallbackHex);
   const a = Math.min(1, Math.max(0, alpha));
   return `rgba(${c.r},${c.g},${c.b},${a})`;
-}
-
-function mixRgb(a, b, t) {
-  const k = Math.min(1, Math.max(0, t));
-  return {
-    r: Math.round(a.r + (b.r - a.r) * k),
-    g: Math.round(a.g + (b.g - a.g) * k),
-    b: Math.round(a.b + (b.b - a.b) * k),
-  };
-}
-
-function rgbToHexChannel(c) {
-  const h = (n) => n.toString(16).padStart(2, "0");
-  return `#${h(c.r)}${h(c.g)}${h(c.b)}`;
-}
-
-function imageCardGradientEndHex(backgroundColor, accentColor) {
-  const bg = parseHex(backgroundColor, "#12131a");
-  const acc = parseHex(accentColor, "#8038ce");
-  const towardAccent = mixRgb(bg, acc, 0.58);
-  const lifted = mixRgb(towardAccent, { r: 255, g: 255, b: 255 }, 0.12);
-  return rgbToHexChannel(lifted);
 }
 
 function wrapLines(ctx, text, maxWidth) {
@@ -289,46 +268,99 @@ function drawImageCover(ctx, img, dx, dy, dWidth, dHeight) {
   ctx.drawImage(img, sx, sy, sw, sh, dx, dy, dWidth, dHeight);
 }
 
-async function drawBackground(ctx, input) {
-  const bg = parseHex(input.backgroundColor, "#12131a");
-  const p = input.backgroundImagePath;
-  const useImage =
-    input.backgroundMode === "image" &&
-    typeof p === "string" &&
-    p.trim() !== "" &&
-    existsSync(p);
+function clampBgOpacity(n) {
+  if (typeof n !== "number" || Number.isNaN(n)) return 1;
+  return Math.min(1, Math.max(0, n));
+}
 
-  if (useImage) {
+async function drawBackground(ctx, input) {
+  const rawMode = input.backgroundMode;
+  const mode =
+    rawMode === "transparent"
+      ? "solid"
+      : rawMode === "image" || rawMode === "gradient" || rawMode === "solid"
+        ? rawMode
+        : "gradient";
+
+  const bgLayerAlpha = clampBgOpacity(input.backgroundOpacity);
+  if (bgLayerAlpha <= 0) {
+    return;
+  }
+
+  if (mode === "solid") {
+    ctx.save();
+    ctx.globalAlpha = bgLayerAlpha;
+    const bg = parseHex(input.backgroundColor, "#3b2065");
+    ctx.fillStyle = rgbToCss(bg);
+    ctx.fillRect(0, 0, W, H);
+    ctx.restore();
+    return;
+  }
+
+  if (mode === "gradient") {
+    ctx.save();
+    ctx.globalAlpha = bgLayerAlpha;
+    const start = parseHex(
+      String(
+        (input.backgroundGradientStartColor || input.backgroundColor || "#3b2065").trim()
+      ),
+      "#3b2065"
+    );
+    const end = parseHex(
+      String((input.backgroundGradientEndColor || input.accentColor || "#111827").trim()),
+      "#111827"
+    );
+    const gMode = input.backgroundGradientMode === "radial" ? "radial" : "diagonal";
+    if (gMode === "radial") {
+      const cx = W / 2;
+      const cy = H / 2;
+      const r = Math.hypot(W, H) / 2;
+      const g = ctx.createRadialGradient(cx, cy, 0, cx, cy, r);
+      g.addColorStop(0, rgbToCss(start));
+      g.addColorStop(1, rgbToCss(end));
+      ctx.fillStyle = g;
+    } else {
+      const g = ctx.createLinearGradient(0, 0, W, H);
+      g.addColorStop(0, rgbToCss(start));
+      g.addColorStop(1, rgbToCss(end));
+      ctx.fillStyle = g;
+    }
+    ctx.fillRect(0, 0, W, H);
+    ctx.restore();
+    return;
+  }
+
+  ctx.save();
+  ctx.globalAlpha = bgLayerAlpha;
+  const dataUrl =
+    typeof input.backgroundImageDataUrl === "string"
+      ? input.backgroundImageDataUrl.trim()
+      : "";
+  if (dataUrl.startsWith("data:image/") && dataUrl.includes("base64,")) {
     try {
-      const bgImg = await loadImage(p);
+      const bgImg = await loadImage(dataUrl);
       drawImageCover(ctx, bgImg, 0, 0, W, H);
+      ctx.restore();
       return;
     } catch {
       /* fallback */
     }
   }
 
-  const mode =
-    input.backgroundMode === "solid"
-      ? "solid"
-      : input.backgroundMode === "gradient" || input.backgroundMode === "image"
-        ? "gradient"
-        : "gradient";
+  const p = input.backgroundImagePath;
+  const useImage = typeof p === "string" && p.trim() !== "" && existsSync(p);
 
-  if (mode === "gradient") {
-    const endHex = imageCardGradientEndHex(
-      String(input.backgroundColor || "#12131a").trim(),
-      String(input.accentColor || "#8038ce").trim()
-    );
-    const end = parseHex(endHex, "#2a2d42");
-    const g = ctx.createLinearGradient(0, 0, W, H);
-    g.addColorStop(0, rgbToCss(bg));
-    g.addColorStop(1, rgbToCss(end));
-    ctx.fillStyle = g;
-  } else {
-    ctx.fillStyle = rgbToCss(bg);
+  if (useImage) {
+    try {
+      const bgImg = await loadImage(p);
+      drawImageCover(ctx, bgImg, 0, 0, W, H);
+      ctx.restore();
+      return;
+    } catch {
+      /* пусто */
+    }
   }
-  ctx.fillRect(0, 0, W, H);
+  ctx.restore();
 }
 
 async function generateWelcomeImageCardPngBuffer(input, fontDir) {
@@ -389,9 +421,13 @@ async function generateWelcomeImageCardPngBuffer(input, fontDir) {
 
   await drawBackground(ctx, input);
 
-  const overlayRgb = parseHex(overlayHex, DEFAULT_OVERLAY_COLOR);
-  ctx.fillStyle = `rgba(${overlayRgb.r},${overlayRgb.g},${overlayRgb.b},${overlayOp})`;
-  ctx.fillRect(0, 0, W, H);
+  const effectiveMode =
+    input.backgroundMode === "transparent" ? "solid" : input.backgroundMode;
+  if (effectiveMode === "image") {
+    const overlayRgb = parseHex(overlayHex, DEFAULT_OVERLAY_COLOR);
+    ctx.fillStyle = `rgba(${overlayRgb.r},${overlayRgb.g},${overlayRgb.b},${overlayOp})`;
+    ctx.fillRect(0, 0, W, H);
+  }
 
   const cx = W / 2;
 

@@ -15,7 +15,7 @@ export const welcomeModuleCopy = {
   deliveryDmPrivacyNote:
     "ЛС может не прийти, если у участника закрыты личные сообщения от участников сервера.",
   deliveryModeTablistAria: "Способ отправки приветствия: канал или личные сообщения",
-  welcomeDisabledOverlayHint: "Приветствие выключено — нажмите, чтобы включить",
+  welcomeDisabledOverlayHint: "Функция выключена. Нажми, чтобы включить",
   sidebarWelcomeToggleAria: "Включить или выключить приветствие для новых участников",
   skipBotAccountsTitle: "Не приветствовать ботов",
   skipBotAccountsHelp: "Не отправлять приветствие аккаунтам с пометкой «бот».",

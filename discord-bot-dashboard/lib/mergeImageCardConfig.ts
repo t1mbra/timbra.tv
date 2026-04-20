@@ -3,6 +3,7 @@ import {
   DEFAULT_OVERLAY_COLOR,
   DEFAULT_OVERLAY_OPACITY,
   DEFAULT_TEXT_COLOR,
+  MAX_IMAGE_CARD_BACKGROUND_DATA_URL_CHARS,
   isImageCardFontKey,
   type ImageCardFontKey,
 } from "./welcomeCardConstants";
@@ -43,8 +44,18 @@ export type ImageCardGuildConfigMerged = {
   overlayColor: string;
   overlayOpacity: number;
   backgroundMode: "gradient" | "solid" | "image";
+  /** Непрозрачность слоя фона (градиент / заливка / изображение). */
+  backgroundOpacity: number;
   backgroundColor: string;
   accentColor: string;
+  /** Градиент: первый цвет (устаревшие конфиги без полей берут backgroundColor). */
+  backgroundGradientStartColor: string;
+  /** Градиент: второй цвет (по умолчанию accentColor). */
+  backgroundGradientEndColor: string;
+  /** Градиент: направление. */
+  backgroundGradientMode: "diagonal" | "radial";
+  /** Фон как data URL (приоритетнее файла на диске). */
+  backgroundImageDataUrl: string;
   backgroundImage: ImageCardBackgroundImageConfig;
   showAvatar: boolean;
   showUsername: boolean;
@@ -72,8 +83,13 @@ const defaults: ImageCardGuildConfigMerged = {
   overlayColor: DEFAULT_OVERLAY_COLOR,
   overlayOpacity: DEFAULT_OVERLAY_OPACITY,
   backgroundMode: "gradient",
-  backgroundColor: "#12131a",
-  accentColor: "#8038ce",
+  backgroundOpacity: 1,
+  backgroundColor: "#3b2065",
+  accentColor: "#111827",
+  backgroundGradientStartColor: "#3b2065",
+  backgroundGradientEndColor: "#111827",
+  backgroundGradientMode: "radial",
+  backgroundImageDataUrl: "",
   backgroundImage: { enabled: false, path: "" },
   showAvatar: true,
   showUsername: false,
@@ -150,12 +166,26 @@ export function imageCardsEqual(a: ImageCardGuildConfigMerged, b: ImageCardGuild
     a.overlayColor === b.overlayColor &&
     a.overlayOpacity === b.overlayOpacity &&
     a.backgroundMode === b.backgroundMode &&
+    a.backgroundOpacity === b.backgroundOpacity &&
     a.backgroundColor === b.backgroundColor &&
     a.accentColor === b.accentColor &&
+    a.backgroundGradientStartColor === b.backgroundGradientStartColor &&
+    a.backgroundGradientEndColor === b.backgroundGradientEndColor &&
+    a.backgroundGradientMode === b.backgroundGradientMode &&
+    a.backgroundImageDataUrl === b.backgroundImageDataUrl &&
     a.backgroundImage.enabled === b.backgroundImage.enabled &&
     a.backgroundImage.path === b.backgroundImage.path &&
     (a.backgroundImage.filename ?? "") === (b.backgroundImage.filename ?? "")
   );
+}
+
+function normalizeBackgroundImageDataUrl(raw: unknown): string {
+  if (typeof raw !== "string") return "";
+  const s = raw.trim();
+  if (!s.startsWith("data:image/") || !s.includes("base64,")) return "";
+  if (s.length > MAX_IMAGE_CARD_BACKGROUND_DATA_URL_CHARS) return "";
+  if (!/^data:image\/(png|jpeg|webp|jpg);base64,/i.test(s)) return "";
+  return s;
 }
 
 export function mergeImageCard(
@@ -166,6 +196,8 @@ export function mergeImageCard(
   if (!raw || typeof raw !== "object" || Array.isArray(raw)) {
     const base = {
       ...defaults,
+      backgroundOpacity: defaults.backgroundOpacity,
+      backgroundImageDataUrl: "",
       backgroundImage: { ...defaults.backgroundImage },
       titleStyle: { ...defaults.titleStyle },
       subtitleStyle: { ...defaults.subtitleStyle },
@@ -180,6 +212,7 @@ export function mergeImageCard(
   let backgroundMode: "gradient" | "solid" | "image" = "gradient";
   if (o.backgroundMode === "solid") backgroundMode = "solid";
   else if (o.backgroundMode === "image") backgroundMode = "image";
+  else if (o.backgroundMode === "transparent") backgroundMode = "solid";
   else if (o.backgroundMode === "gradient") backgroundMode = "gradient";
 
   const titleRaw = o.titleStyle && typeof o.titleStyle === "object" && !Array.isArray(o.titleStyle)
@@ -247,9 +280,34 @@ export function mergeImageCard(
     };
   }
 
+  const backgroundImageDataUrl = normalizeBackgroundImageDataUrl(o.backgroundImageDataUrl);
+
+  const titleTrimmed = typeof o.title === "string" ? o.title.trim() : "";
+
+  const backgroundColorResolved =
+    typeof o.backgroundColor === "string" ? o.backgroundColor : defaults.backgroundColor;
+  const accentColorResolved =
+    typeof o.accentColor === "string" ? o.accentColor : defaults.accentColor;
+
+  let backgroundGradientStartColor =
+    typeof o.backgroundGradientStartColor === "string" && o.backgroundGradientStartColor.trim()
+      ? o.backgroundGradientStartColor.trim()
+      : backgroundColorResolved;
+  let backgroundGradientEndColor =
+    typeof o.backgroundGradientEndColor === "string" && o.backgroundGradientEndColor.trim()
+      ? o.backgroundGradientEndColor.trim()
+      : accentColorResolved;
+
+  let backgroundGradientMode: "diagonal" | "radial" = defaults.backgroundGradientMode;
+  if (o.backgroundGradientMode === "radial") backgroundGradientMode = "radial";
+  else if (o.backgroundGradientMode === "diagonal") backgroundGradientMode = "diagonal";
+
   return {
-    title: typeof o.title === "string" ? o.title : defaults.title,
-    subtitle: typeof o.subtitle === "string" ? o.subtitle : defaults.subtitle,
+    title: titleTrimmed ? titleTrimmed : defaults.title,
+    subtitle:
+      typeof o.subtitle === "string"
+        ? o.subtitle.trim() || defaults.subtitle
+        : defaults.subtitle,
     description: typeof o.description === "string" ? o.description : defaults.description,
     fontFamily,
     textColor,
@@ -261,9 +319,16 @@ export function mergeImageCard(
     overlayColor: typeof o.overlayColor === "string" ? o.overlayColor : defaults.overlayColor,
     overlayOpacity: clamp01(o.overlayOpacity, defaults.overlayOpacity),
     backgroundMode,
-    backgroundColor:
-      typeof o.backgroundColor === "string" ? o.backgroundColor : defaults.backgroundColor,
-    accentColor: typeof o.accentColor === "string" ? o.accentColor : defaults.accentColor,
+    backgroundOpacity: clamp01(
+      o.backgroundOpacity,
+      defaults.backgroundOpacity
+    ),
+    backgroundColor: backgroundColorResolved,
+    accentColor: accentColorResolved,
+    backgroundGradientStartColor,
+    backgroundGradientEndColor,
+    backgroundGradientMode,
+    backgroundImageDataUrl,
     backgroundImage,
     showAvatar: true,
     showUsername: false,

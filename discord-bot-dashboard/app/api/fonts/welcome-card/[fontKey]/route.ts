@@ -2,8 +2,11 @@ import { readFile } from "node:fs/promises";
 import path from "node:path";
 import { NextResponse } from "next/server";
 
+import {
+  welcomeCardFontDirHasFont,
+  resolveWelcomeCardFontDir,
+} from "@/lib/resolveWelcomeCardFontDir";
 import { IMAGE_CARD_FONT_FILES, isImageCardFontKey } from "@/lib/welcomeCardConstants";
-import { resolveSharedDataDir } from "@/lib/resolveSharedDataDir";
 
 export async function GET(
   _request: Request,
@@ -13,8 +16,12 @@ export async function GET(
   if (!isImageCardFontKey(fontKey)) {
     return new NextResponse("Не найдено", { status: 404 });
   }
+  const dir = resolveWelcomeCardFontDir();
+  if (!welcomeCardFontDirHasFont(dir, fontKey)) {
+    return new NextResponse("Не найдено", { status: 404 });
+  }
   const filename = IMAGE_CARD_FONT_FILES[fontKey];
-  const fullPath = path.join(resolveSharedDataDir(), "fonts", "welcome-card", filename);
+  const fullPath = path.join(dir, filename);
   try {
     const buf = await readFile(fullPath);
     return new NextResponse(buf, {

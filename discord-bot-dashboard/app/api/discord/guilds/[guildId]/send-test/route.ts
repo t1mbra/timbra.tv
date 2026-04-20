@@ -6,6 +6,7 @@ import { discordFetch } from "@/lib/discordFetch";
 import { resolveImageCardBackgroundAbsolutePath } from "@/lib/resolveImageCardBackgroundPath";
 import { mergeImageCard } from "@/lib/mergeImageCardConfig";
 import { resolveSharedDataDir } from "@/lib/resolveSharedDataDir";
+import { resolveWelcomeCardFontDir } from "@/lib/resolveWelcomeCardFontDir";
 import { listAvailableWelcomeCardFontKeys } from "@/lib/resolveImageCardFont";
 import { generateWelcomeImageCardPngBuffer } from "@/lib/welcomeImageCard";
 import { DEFAULT_OVERLAY_COLOR, DEFAULT_OVERLAY_OPACITY } from "@/lib/welcomeCardConstants";
@@ -365,7 +366,7 @@ export async function POST(
   if (welcomeStyle === "imageCard") {
     const icRaw = body.imageCard && typeof body.imageCard === "object" ? body.imageCard : {};
     const sharedRoot = resolveSharedDataDir();
-    const fontDirForMerge = path.join(sharedRoot, "fonts", "welcome-card");
+    const fontDirForMerge = resolveWelcomeCardFontDir();
     const availableFontKeys = listAvailableWelcomeCardFontKeys(fontDirForMerge);
     const ic = mergeImageCard(icRaw, { availableFontKeys });
 
@@ -375,10 +376,17 @@ export async function POST(
     let bgMode: "gradient" | "solid" | "image" = "gradient";
     if (ic.backgroundMode === "solid") bgMode = "solid";
     else if (ic.backgroundMode === "image") bgMode = "image";
+    const backgroundOpacity =
+      typeof ic.backgroundOpacity === "number" && !Number.isNaN(ic.backgroundOpacity)
+        ? Math.min(1, Math.max(0, ic.backgroundOpacity))
+        : 1;
     const bgColor =
       typeof ic.backgroundColor === "string" ? ic.backgroundColor : "#12131a";
     const accColor =
       typeof ic.accentColor === "string" ? ic.accentColor : "#8038ce";
+    const backgroundGradientStartColor = ic.backgroundGradientStartColor;
+    const backgroundGradientEndColor = ic.backgroundGradientEndColor;
+    const backgroundGradientMode = ic.backgroundGradientMode;
     const overlayColor =
       typeof ic.overlayColor === "string" ? ic.overlayColor : DEFAULT_OVERLAY_COLOR;
     const overlayOpacity =
@@ -388,8 +396,12 @@ export async function POST(
 
     const fontDir = fontDirForMerge;
 
+    const backgroundImageDataUrl =
+      typeof ic.backgroundImageDataUrl === "string" ? ic.backgroundImageDataUrl.trim() : "";
+
     let backgroundImagePath: string | null = null;
     if (
+      !backgroundImageDataUrl &&
       bgMode === "image" &&
       ic.backgroundImage &&
       typeof ic.backgroundImage === "object"
@@ -420,8 +432,13 @@ export async function POST(
           overlayColor,
           overlayOpacity,
           backgroundMode: bgMode,
+          backgroundOpacity,
           backgroundColor: bgColor,
           accentColor: accColor,
+          backgroundGradientStartColor,
+          backgroundGradientEndColor,
+          backgroundGradientMode,
+          backgroundImageDataUrl: backgroundImageDataUrl || undefined,
           backgroundImagePath,
           displayName: resolveTestVariables("{username}"),
           avatarUrl: viewerAvatarUrl,

@@ -21,10 +21,9 @@ import {
   type ImageCardFontWeight,
   type ImageCardTextSizePreset,
 } from "./welcomeImageCardLayout";
-import { imageCardGradientEndHex } from "./imageCardGradient";
 import { canvasFontFamilyName, ensureWelcomeCardFontsRegistered } from "./registerWelcomeCardFonts";
 
-export type ImageCardBackgroundMode = "gradient" | "solid" | "image";
+export type ImageCardBackgroundMode = "gradient" | "solid" | "image" | "transparent";
 
 export type ImageCardRenderableFieldStyle = {
   textSize: ImageCardTextSizePreset;
@@ -46,8 +45,15 @@ export type ImageCardGenerationInput = {
   overlayColor: string;
   overlayOpacity: number;
   backgroundMode: ImageCardBackgroundMode;
+  /** 0..1, только слой фона (не оверлей, не текст). */
+  backgroundOpacity?: number;
   backgroundColor: string;
   accentColor: string;
+  backgroundGradientStartColor?: string;
+  backgroundGradientEndColor?: string;
+  backgroundGradientMode?: "diagonal" | "radial";
+  /** Приоритет над backgroundImagePath */
+  backgroundImageDataUrl?: string | null;
   backgroundImagePath?: string | null;
   showAvatar?: boolean;
   showUsername?: boolean;
@@ -104,6 +110,11 @@ function rgbaFromHex(hex: string, alpha: number, fallbackHex: string): string {
 
 function clamp01(n: number): number {
   if (Number.isNaN(n)) return DEFAULT_OVERLAY_OPACITY;
+  return Math.min(1, Math.max(0, n));
+}
+
+function clamp01Unit(n: number): number {
+  if (Number.isNaN(n)) return 1;
   return Math.min(1, Math.max(0, n));
 }
 
@@ -175,9 +186,77 @@ function drawImageCover(
 }
 
 async function drawBackground(ctx: SKRSContext2D, input: ImageCardGenerationInput): Promise<void> {
-  const bg = parseHex(input.backgroundColor, "#12131a");
+  const rawMode = input.backgroundMode;
+  const mode: ImageCardBackgroundMode =
+    rawMode === "transparent" ? "solid" : rawMode === "image" || rawMode === "gradient" || rawMode === "solid"
+      ? rawMode
+      : "gradient";
+
+  const bgLayerAlpha = clamp01Unit(
+    typeof input.backgroundOpacity === "number" ? input.backgroundOpacity : 1
+  );
+  if (bgLayerAlpha <= 0) {
+    return;
+  }
+
+  if (mode === "solid") {
+    ctx.save();
+    ctx.globalAlpha = bgLayerAlpha;
+    const bg = parseHex(input.backgroundColor, "#12131a");
+    ctx.fillStyle = rgbToCss(bg);
+    ctx.fillRect(0, 0, W, H);
+    ctx.restore();
+    return;
+  }
+
+  if (mode === "gradient") {
+    ctx.save();
+    ctx.globalAlpha = bgLayerAlpha;
+    const start = parseHex(
+      (input.backgroundGradientStartColor ?? input.backgroundColor)?.trim() || "#12131a",
+      "#12131a"
+    );
+    const end = parseHex(
+      (input.backgroundGradientEndColor ?? input.accentColor)?.trim() || "#8038ce",
+      "#8038ce"
+    );
+    const gMode = input.backgroundGradientMode === "radial" ? "radial" : "diagonal";
+    if (gMode === "radial") {
+      const cx = W / 2;
+      const cy = H / 2;
+      const r = Math.hypot(W, H) / 2;
+      const g = ctx.createRadialGradient(cx, cy, 0, cx, cy, r);
+      g.addColorStop(0, rgbToCss(start));
+      g.addColorStop(1, rgbToCss(end));
+      ctx.fillStyle = g;
+    } else {
+      const g = ctx.createLinearGradient(0, 0, W, H);
+      g.addColorStop(0, rgbToCss(start));
+      g.addColorStop(1, rgbToCss(end));
+      ctx.fillStyle = g;
+    }
+    ctx.fillRect(0, 0, W, H);
+    ctx.restore();
+    return;
+  }
+
+  /* image */
+  ctx.save();
+  ctx.globalAlpha = bgLayerAlpha;
+  const dataUrl =
+    typeof input.backgroundImageDataUrl === "string" ? input.backgroundImageDataUrl.trim() : "";
+  if (dataUrl.startsWith("data:image/") && dataUrl.includes("base64,")) {
+    try {
+      const bgImg = await loadImage(dataUrl);
+      drawImageCover(ctx, bgImg, 0, 0, W, H);
+      ctx.restore();
+      return;
+    } catch {
+      /* fallback file */
+    }
+  }
+
   const useImage =
-    input.backgroundMode === "image" &&
     typeof input.backgroundImagePath === "string" &&
     input.backgroundImagePath.trim() !== "" &&
     existsSync(input.backgroundImagePath);
@@ -186,33 +265,13 @@ async function drawBackground(ctx: SKRSContext2D, input: ImageCardGenerationInpu
     try {
       const bgImg = await loadImage(input.backgroundImagePath);
       drawImageCover(ctx, bgImg, 0, 0, W, H);
+      ctx.restore();
       return;
     } catch {
-      /* fallback */
+      /* пусто */
     }
   }
-
-  const mode =
-    input.backgroundMode === "solid"
-      ? "solid"
-      : input.backgroundMode === "gradient" || input.backgroundMode === "image"
-        ? "gradient"
-        : "gradient";
-
-  if (mode === "gradient") {
-    const endHex = imageCardGradientEndHex(
-      input.backgroundColor?.trim() || "#12131a",
-      input.accentColor?.trim() || "#8038ce"
-    );
-    const end = parseHex(endHex, "#2a2d42");
-    const g = ctx.createLinearGradient(0, 0, W, H);
-    g.addColorStop(0, rgbToCss(bg));
-    g.addColorStop(1, rgbToCss(end));
-    ctx.fillStyle = g;
-  } else {
-    ctx.fillStyle = rgbToCss(bg);
-  }
-  ctx.fillRect(0, 0, W, H);
+  ctx.restore();
 }
 
 export async function generateWelcomeImageCardPngBuffer(
@@ -268,9 +327,13 @@ export async function generateWelcomeImageCardPngBuffer(
 
   await drawBackground(ctx, input);
 
-  const overlayRgb = parseHex(overlayHex, DEFAULT_OVERLAY_COLOR);
-  ctx.fillStyle = `rgba(${overlayRgb.r},${overlayRgb.g},${overlayRgb.b},${overlayOp})`;
-  ctx.fillRect(0, 0, W, H);
+  const effectiveMode =
+    input.backgroundMode === "transparent" ? "solid" : input.backgroundMode;
+  if (effectiveMode === "image") {
+    const overlayRgb = parseHex(overlayHex, DEFAULT_OVERLAY_COLOR);
+    ctx.fillStyle = `rgba(${overlayRgb.r},${overlayRgb.g},${overlayRgb.b},${overlayOp})`;
+    ctx.fillRect(0, 0, W, H);
+  }
 
   const cx = W / 2;
 

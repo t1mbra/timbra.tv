@@ -3,6 +3,7 @@ const path = require("path");
 const { EmbedBuilder, AttachmentBuilder } = require("discord.js");
 const { generateWelcomeImageCardPngBuffer } = require("./welcomeImageCard");
 const { resolveSharedDataDir } = require("./resolveSharedDataDir");
+const { resolveWelcomeCardFontDir } = require("./resolveWelcomeCardFontDir");
 const configStore = require("./persistence/configStore");
 const { configFilePath } = require("./persistence/jsonConfigStore");
 
@@ -314,16 +315,38 @@ async function sendWelcome(member, config) {
         ? /** @type {Record<string, unknown>} */ (icRaw)
         : {};
 
-    const titleRaw = typeof ic.title === "string" ? ic.title : "Добро пожаловать";
-    const subtitleRaw = typeof ic.subtitle === "string" ? ic.subtitle : "";
+    const titleRaw =
+      typeof ic.title === "string" && ic.title.trim()
+        ? ic.title.trim()
+        : "Добро пожаловать";
+    const subtitleRaw =
+      typeof ic.subtitle === "string" && ic.subtitle.trim()
+        ? ic.subtitle.trim()
+        : "Новый участник";
     const descRaw = typeof ic.description === "string" ? ic.description : "";
     let bgMode = "gradient";
     if (ic.backgroundMode === "solid") bgMode = "solid";
     else if (ic.backgroundMode === "image") bgMode = "image";
+    else if (ic.backgroundMode === "transparent") bgMode = "solid";
+    let backgroundOpacity =
+      typeof ic.backgroundOpacity === "number" && !Number.isNaN(ic.backgroundOpacity)
+        ? ic.backgroundOpacity
+        : 1;
+    backgroundOpacity = Math.min(1, Math.max(0, backgroundOpacity));
     const bgColor =
-      typeof ic.backgroundColor === "string" ? ic.backgroundColor : "#12131a";
+      typeof ic.backgroundColor === "string" ? ic.backgroundColor : "#3b2065";
     const accColor =
-      typeof ic.accentColor === "string" ? ic.accentColor : "#8038ce";
+      typeof ic.accentColor === "string" ? ic.accentColor : "#111827";
+    const backgroundGradientStartColor =
+      typeof ic.backgroundGradientStartColor === "string" && ic.backgroundGradientStartColor.trim()
+        ? ic.backgroundGradientStartColor.trim()
+        : bgColor;
+    const backgroundGradientEndColor =
+      typeof ic.backgroundGradientEndColor === "string" && ic.backgroundGradientEndColor.trim()
+        ? ic.backgroundGradientEndColor.trim()
+        : accColor;
+    const backgroundGradientMode =
+      ic.backgroundGradientMode === "radial" ? "radial" : "diagonal";
     const overlayColor =
       typeof ic.overlayColor === "string" ? ic.overlayColor : "#09090b";
     let overlayOpacity =
@@ -370,8 +393,16 @@ async function sendWelcome(member, config) {
     const subtitleStyle = pickFieldStyle(ic.subtitleStyle);
 
     const sharedRoot = resolveSharedDataDir();
-    const fontDir = path.join(sharedRoot, "fonts", "welcome-card");
-    const backgroundImagePath = resolveImageCardBackgroundPath(sharedRoot, ic.backgroundImage);
+    const fontDir = resolveWelcomeCardFontDir();
+    const backgroundImageDataUrl =
+      typeof ic.backgroundImageDataUrl === "string" ? ic.backgroundImageDataUrl.trim() : "";
+    const backgroundImagePath =
+      !backgroundImageDataUrl &&
+      bgMode === "image" &&
+      ic.backgroundImage &&
+      typeof ic.backgroundImage === "object"
+        ? resolveImageCardBackgroundPath(sharedRoot, ic.backgroundImage)
+        : null;
 
     const displayName = member.displayName || member.user.username;
     const avatarUrl = member.user.displayAvatarURL({ extension: "png", size: 256 });
@@ -389,8 +420,13 @@ async function sendWelcome(member, config) {
           overlayColor,
           overlayOpacity,
           backgroundMode: bgMode,
+          backgroundOpacity,
           backgroundColor: bgColor,
           accentColor: accColor,
+          backgroundGradientStartColor,
+          backgroundGradientEndColor,
+          backgroundGradientMode,
+          backgroundImageDataUrl: backgroundImageDataUrl || undefined,
           backgroundImagePath,
           displayName,
           avatarUrl,
