@@ -7,6 +7,7 @@ import {
   useMemo,
   useRef,
   useState,
+  type MutableRefObject,
   type ChangeEvent,
   type ClipboardEvent,
   type CSSProperties,
@@ -784,7 +785,10 @@ function tokenizeWelcomePreview(input: string): WelcomePreviewToken[] {
 }
 
 const WELCOME_SRC_ATTR = "data-welcome-src";
-/** Интерактивные токены Preview: канал, роль, emoji, переменные */
+/** Плейсхолдеры `{username}` и т.п.: видны как текст, лёгкий hover, удаление целиком по Backspace/Delete внутри */
+const WELCOME_TEMPLATE_VARIABLE_ATTR = "data-template-variable";
+const WELCOME_TEMPLATE_VARIABLE_CLASS = "welcome-template-variable";
+/** Интерактивные токены Preview: канал, роль, emoji, {user} больше не относится — см. шаблонные span */
 const WELCOME_INTERACTIVE_TOKEN = "welcome-interactive-token";
 const WELCOME_TOKEN_SELECTED = "welcome-interactive-token--selected";
 
@@ -816,6 +820,7 @@ function serializeWelcomeFlatNode(node: Node): string {
   const el = node as HTMLElement;
   if (el.tagName === "BR") return "\n";
   const src = el.getAttribute(WELCOME_SRC_ATTR);
+  if (src !== null && el.hasAttribute(WELCOME_TEMPLATE_VARIABLE_ATTR)) return src;
   if (src !== null) return src;
   let s = "";
   for (let i = 0; i < el.childNodes.length; i++) {
@@ -863,9 +868,21 @@ function getWelcomePlainCaretOffset(root: HTMLElement): number {
         offset += range.startOffset;
       } else if (node.nodeType === Node.ELEMENT_NODE) {
         const el = node as HTMLElement;
-        const src = el.getAttribute(WELCOME_SRC_ATTR);
-        if (src !== null) {
-          offset += range.startOffset >= 1 ? src.length : 0;
+        if (el.hasAttribute(WELCOME_TEMPLATE_VARIABLE_ATTR)) {
+          const src = el.getAttribute(WELCOME_SRC_ATTR) ?? "";
+          const r = document.createRange();
+          r.setStart(el, 0);
+          r.setEnd(range.startContainer, range.startOffset);
+          const innerVis = r.toString().length;
+          const visLen = el.textContent?.length ?? 0;
+          const plainInner =
+            visLen === 0 ? 0 : Math.min(src.length, Math.round((innerVis * src.length) / visLen));
+          offset += plainInner;
+        } else {
+          const src = el.getAttribute(WELCOME_SRC_ATTR);
+          if (src !== null) {
+            offset += range.startOffset >= 1 ? src.length : 0;
+          }
         }
       }
       found = true;
@@ -879,6 +896,23 @@ function getWelcomePlainCaretOffset(root: HTMLElement): number {
     const el = node as HTMLElement;
     if (el.tagName === "BR") {
       offset += 1;
+      return;
+    }
+    if (el.hasAttribute(WELCOME_TEMPLATE_VARIABLE_ATTR)) {
+      const src = el.getAttribute(WELCOME_SRC_ATTR) ?? "";
+      if (el.contains(range.startContainer)) {
+        const r = document.createRange();
+        r.setStart(el, 0);
+        r.setEnd(range.startContainer, range.startOffset);
+        const innerVis = r.toString().length;
+        const visLen = el.textContent?.length ?? 0;
+        const plainInner =
+          visLen === 0 ? 0 : Math.min(src.length, Math.round((innerVis * src.length) / visLen));
+        offset += plainInner;
+        found = true;
+      } else {
+        offset += src.length;
+      }
       return;
     }
     const src = el.getAttribute(WELCOME_SRC_ATTR);
@@ -930,6 +964,38 @@ function setWelcomePlainCaretOffset(root: HTMLElement, target: number): void {
       acc += 1;
       return false;
     }
+    if (el.hasAttribute(WELCOME_TEMPLATE_VARIABLE_ATTR)) {
+      const src = el.getAttribute(WELCOME_SRC_ATTR) ?? "";
+      const visLen = el.textContent?.length ?? 0;
+      if (target < acc + src.length) {
+        const innerPlain = Math.max(0, target - acc);
+        const innerVis =
+          src.length === 0
+            ? 0
+            : Math.min(visLen, Math.round((innerPlain * visLen) / src.length));
+        const tn = Array.from(el.childNodes).find((c) => c.nodeType === Node.TEXT_NODE);
+        if (tn) {
+          const tlen = (tn.textContent ?? "").length;
+          const o = Math.min(innerVis, tlen);
+          const r = document.createRange();
+          r.setStart(tn, o);
+          r.collapse(true);
+          sel?.removeAllRanges();
+          sel?.addRange(r);
+          return true;
+        }
+      }
+      if (acc + src.length >= target) {
+        const r = document.createRange();
+        r.setStartAfter(el);
+        r.collapse(true);
+        sel?.removeAllRanges();
+        sel?.addRange(r);
+        return true;
+      }
+      acc += src.length;
+      return false;
+    }
     const src = el.getAttribute(WELCOME_SRC_ATTR);
     if (src !== null) {
       if (acc + src.length >= target) {
@@ -957,6 +1023,72 @@ function setWelcomePlainCaretOffset(root: HTMLElement, target: number): void {
   r.collapse(false);
   sel?.removeAllRanges();
   sel?.addRange(r);
+}
+
+function findWelcomeTemplateVariableSpan(node: Node | null, root: HTMLElement): HTMLElement | null {
+  const el =
+    node?.nodeType === Node.TEXT_NODE ? (node.parentElement as HTMLElement | null) : (node as HTMLElement | null);
+  const span = el?.closest(`[${WELCOME_TEMPLATE_VARIABLE_ATTR}]`) ?? null;
+  return span && root.contains(span) ? (span as HTMLElement) : null;
+}
+
+function caretPlainOffsetWithinTemplateVarSpan(
+  span: HTMLElement,
+  container: Node,
+  offset: number
+): number {
+  const r = document.createRange();
+  r.setStart(span, 0);
+  r.setEnd(container, offset);
+  return r.toString().length;
+}
+
+function tryHandleWelcomeTemplateVariableKeydown(
+  editor: HTMLElement,
+  event: KeyboardEvent<HTMLDivElement>,
+  composingRef: MutableRefObject<boolean>,
+  onRemoved: () => void
+): boolean {
+  if (event.key !== "Backspace" && event.key !== "Delete") return false;
+  if (composingRef.current || event.nativeEvent.isComposing) return false;
+  const sel = window.getSelection();
+  if (!sel || sel.rangeCount === 0) return false;
+  const range = sel.getRangeAt(0);
+  if (!editor.contains(range.commonAncestorContainer)) return false;
+  if (!range.collapsed) return false;
+
+  const span = findWelcomeTemplateVariableSpan(range.startContainer, editor);
+  if (!span) return false;
+
+  const src = span.getAttribute(WELCOME_SRC_ATTR) ?? "";
+  const innerVis = caretPlainOffsetWithinTemplateVarSpan(span, range.startContainer, range.startOffset);
+  const visLen = span.textContent?.length ?? 0;
+  const plainInner =
+    visLen === 0 ? 0 : Math.min(src.length, Math.round((innerVis * src.length) / visLen));
+
+  event.preventDefault();
+  const caretBefore = getWelcomePlainCaretOffset(editor);
+  const newCaret = caretBefore - plainInner;
+  span.remove();
+  normalizeWelcomeRichDivs(editor);
+  const max = serializeWelcomeRichEditorRoot(editor).length;
+  setWelcomePlainCaretOffset(editor, Math.max(0, Math.min(newCaret, max)));
+  onRemoved();
+  return true;
+}
+
+function buildWelcomeTemplateVariableSpan(
+  variableId: string,
+  literal: string,
+  previewVisible: string
+): HTMLSpanElement {
+  const span = document.createElement("span");
+  span.setAttribute(WELCOME_TEMPLATE_VARIABLE_ATTR, variableId);
+  span.setAttribute(WELCOME_SRC_ATTR, literal);
+  span.className = WELCOME_TEMPLATE_VARIABLE_CLASS;
+  span.title = literal;
+  span.textContent = previewVisible;
+  return span;
 }
 
 function buildWelcomeDomForToken(tok: WelcomePreviewToken, ctx: WelcomeRichDomContext): Node {
@@ -1012,48 +1144,22 @@ function buildWelcomeDomForToken(tok: WelcomePreviewToken, ctx: WelcomeRichDomCo
     return span;
   }
   if (tok.kind === "userVar") {
-    const span = document.createElement("span");
-    span.setAttribute(WELCOME_SRC_ATTR, "{user}");
-    span.contentEditable = "false";
-    span.className = `${mentionPillBase} ${WELCOME_INTERACTIVE_TOKEN} welcome-token-variable-user`;
-    span.title = "Плейсхолдер {user}";
-    span.textContent = PREVIEW_USER_AT;
-    return span;
+    return buildWelcomeTemplateVariableSpan("user", "{user}", PREVIEW_USER_AT);
   }
   if (tok.kind === "usernameVar") {
-    const span = document.createElement("span");
-    span.setAttribute(WELCOME_SRC_ATTR, "{username}");
-    span.contentEditable = "false";
-    span.className = "";
-    span.title = "{username}";
-    span.textContent = PREVIEW_USERNAME;
-    return span;
+    return buildWelcomeTemplateVariableSpan("username", "{username}", PREVIEW_USERNAME);
   }
   if (tok.kind === "serverVar") {
-    const span = document.createElement("span");
-    span.setAttribute(WELCOME_SRC_ATTR, "{server}");
-    span.contentEditable = "false";
-    span.className = "";
-    span.title = "{server}";
-    span.textContent = PREVIEW_SERVER_LABEL;
-    return span;
+    return buildWelcomeTemplateVariableSpan("server", "{server}", PREVIEW_SERVER_LABEL);
   }
   if (tok.kind === "memberCountVar") {
-    const span = document.createElement("span");
-    span.setAttribute(WELCOME_SRC_ATTR, "{memberCount}");
-    span.contentEditable = "false";
-    span.className = "tabular-nums";
-    span.title = "{memberCount}";
-    span.textContent = PREVIEW_MEMBER_COUNT;
+    const span = buildWelcomeTemplateVariableSpan("memberCount", "{memberCount}", PREVIEW_MEMBER_COUNT);
+    span.classList.add("tabular-nums");
     return span;
   }
   if (tok.kind === "dateVar") {
-    const span = document.createElement("span");
-    span.setAttribute(WELCOME_SRC_ATTR, "{date}");
-    span.contentEditable = "false";
-    span.className = "tabular-nums";
-    span.title = "{date}";
-    span.textContent = ctx.previewDateStr;
+    const span = buildWelcomeTemplateVariableSpan("date", "{date}", ctx.previewDateStr);
+    span.classList.add("tabular-nums");
     return span;
   }
   return document.createTextNode("");
@@ -2575,6 +2681,15 @@ export function DashboardGuildPageClient({
         flushWelcomeHistoryDebouncedNow();
         return;
       }
+      if (
+        tryHandleWelcomeTemplateVariableKeydown(ed, event, welcomeRichComposeRef, () => {
+          flushWelcomeHistoryDebouncedNow();
+          handleWelcomeRichInput();
+          flushWelcomeHistoryDebouncedNow();
+        })
+      ) {
+        return;
+      }
     }
 
     if (event.key !== "Enter") return;
@@ -2619,7 +2734,11 @@ export function DashboardGuildPageClient({
     const tokenRoot = (n: Node | null) => {
       const el =
         n?.nodeType === Node.TEXT_NODE ? (n.parentElement as HTMLElement | null) : (n as HTMLElement | null);
-      return el?.closest(`.${WELCOME_INTERACTIVE_TOKEN}`) ?? null;
+      return (
+        el?.closest(`.${WELCOME_INTERACTIVE_TOKEN}`) ??
+        el?.closest(`[${WELCOME_TEMPLATE_VARIABLE_ATTR}]`) ??
+        null
+      );
     };
     const t1 = tokenRoot(a);
     const t2 = tokenRoot(f);
@@ -2713,6 +2832,13 @@ export function DashboardGuildPageClient({
         handleDmRichInput();
         return;
       }
+      if (
+        tryHandleWelcomeTemplateVariableKeydown(ed, event, welcomeDmRichComposeRef, () => {
+          handleDmRichInput();
+        })
+      ) {
+        return;
+      }
     }
     if (event.key !== "Enter") return;
     event.preventDefault();
@@ -2749,6 +2875,30 @@ export function DashboardGuildPageClient({
     if (!sel || sel.rangeCount === 0) return;
     const range = sel.getRangeAt(0);
     if (!ed.contains(range.commonAncestorContainer)) return;
+
+    const a = sel.anchorNode;
+    const f = sel.focusNode;
+    if (!a || !f || !ed.contains(a) || !ed.contains(f)) return;
+    const tokenRoot = (n: Node | null) => {
+      const el =
+        n?.nodeType === Node.TEXT_NODE ? (n.parentElement as HTMLElement | null) : (n as HTMLElement | null);
+      return (
+        el?.closest(`.${WELCOME_INTERACTIVE_TOKEN}`) ??
+        el?.closest(`[${WELCOME_TEMPLATE_VARIABLE_ATTR}]`) ??
+        null
+      );
+    };
+    const t1 = tokenRoot(a);
+    const t2 = tokenRoot(f);
+    if (t1 && t1 === t2 && ed.contains(t1)) {
+      const src = t1.getAttribute(WELCOME_SRC_ATTR);
+      if (src) {
+        event.clipboardData?.setData("text/plain", src);
+        event.preventDefault();
+      }
+      return;
+    }
+
     if (!range.collapsed) {
       const holder = document.createElement("div");
       holder.appendChild(range.cloneContents());
@@ -4952,7 +5102,7 @@ export function DashboardGuildPageClient({
                               role="toolbar"
                               aria-label="Вставка в сообщение"
                             >
-                              {(["emoji", "channel", "role", "variable"] as const).map((type) => (
+                              {(["emoji", "channel", "variable"] as const).map((type) => (
                                 <div
                                   key={`dm-${type}`}
                                   ref={(el) => {
