@@ -5,8 +5,11 @@
 export const IMAGE_CARD_W = 1200;
 export const IMAGE_CARD_H = 515;
 
-/** Скругление всей карточки (превью и PNG с прозрачными углами). */
-export const IMAGE_CARD_RADIUS_PX = 32;
+/** Скругление превью карточки в дашборде (px). */
+export const IMAGE_CARD_PREVIEW_RADIUS_PX = 24;
+
+/** Скругление PNG / финальной отрисовки для Discord (px). */
+export const IMAGE_CARD_RADIUS_PX = 40;
 
 /** Максимальная ширина блока текста по центру (px на холсте 1200) */
 export const IMAGE_CARD_TEXT_MAX_W = 860;

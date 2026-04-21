@@ -5,8 +5,8 @@ const { createCanvas, loadImage, GlobalFonts } = require("@napi-rs/canvas");
 const W = 1200;
 const H = 515;
 const TEXT_MAX_W = 860;
-/** Скругление всей карточки (как в dashboard `welcomeImageCardLayout.ts`). */
-const IMAGE_CARD_RADIUS_PX = 32;
+/** Скругление PNG (как `IMAGE_CARD_RADIUS_PX` в dashboard `welcomeImageCardLayout.ts`). */
+const IMAGE_CARD_RADIUS_PX = 40;
 
 const DEFAULT_TEXT_COLOR = "#f4f4f5";
 const DEFAULT_OVERLAY_COLOR = "#09090b";

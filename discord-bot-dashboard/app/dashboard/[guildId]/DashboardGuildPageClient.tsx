@@ -44,7 +44,7 @@ import {
   type ImageCardFontKey,
 } from "@/lib/welcomeCardConstants";
 import {
-  IMAGE_CARD_RADIUS_PX,
+  IMAGE_CARD_PREVIEW_RADIUS_PX,
   IMAGE_CARD_W,
   imageCardPreviewScaledMetrics,
 } from "@/lib/welcomeImageCardLayout";
@@ -4640,7 +4640,7 @@ export function DashboardGuildPageClient({
 
                         <div
                           className="overflow-hidden bg-zinc-950 shadow-[0_16px_56px_rgba(0,0,0,0.38)] ring-1 ring-white/[0.09]"
-                          style={{ borderRadius: IMAGE_CARD_RADIUS_PX }}
+                          style={{ borderRadius: IMAGE_CARD_PREVIEW_RADIUS_PX }}
                           aria-label="Карточка приветствия"
                         >
                           <div

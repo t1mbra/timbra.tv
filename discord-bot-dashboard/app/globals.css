@@ -554,8 +554,12 @@ a.ds-btn-ghost:focus-visible {
   font-size: 0.72rem;
   letter-spacing: 0.16em;
   text-transform: uppercase;
-  /* Чуть светлее --muted-foreground (#a7afbd), без ухода в основной текст */
-  color: rgb(198 206 220 / 0.94);
+  color: var(--muted-foreground);
+}
+
+/* Кикеры заголовков блоков в карточке настроек: ближе к zinc-100, без «кричащего» белого */
+.ds-card .ds-kicker {
+  color: rgb(244 244 245 / 0.9);
 }
 
 /* Заголовки: та же гарнитура, что и основной текст (как в HIG) */
