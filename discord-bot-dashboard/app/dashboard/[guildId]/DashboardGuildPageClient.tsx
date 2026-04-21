@@ -316,6 +316,118 @@ function embedFieldsEqual(a: EmbedFieldRow[], b: EmbedFieldRow[]): boolean {
   return true;
 }
 
+const DASHBOARD_IMAGE_MAX_DIMENSION_PX = 1600;
+const DASHBOARD_IMAGE_TARGET_MAX_DATA_URL_BYTES = 1_500_000;
+const DASHBOARD_GIF_MAX_FILE_BYTES = 900_000;
+const DASHBOARD_FILE_TOO_BIG_ERROR = "Файл слишком большой. Попробуй изображение до 1.5 MB.";
+const DASHBOARD_GIF_TOO_BIG_ERROR = "GIF слишком большой. Попробуй файл поменьше.";
+
+type ProcessedUploadImage = {
+  dataUrl: string;
+  mimeType: string;
+  file: File;
+};
+
+function fileExtFromMime(mime: string): string {
+  if (mime === "image/webp") return "webp";
+  if (mime === "image/jpeg") return "jpg";
+  if (mime === "image/png") return "png";
+  return "bin";
+}
+
+function isGifFile(file: File): boolean {
+  if (file.type === "image/gif") return true;
+  return /\.gif$/i.test(file.name || "");
+}
+
+function buildUploadFilename(file: File, mimeType: string): string {
+  const original = (file.name || "image").trim();
+  const stem = original.includes(".") ? original.replace(/\.[^/.]+$/, "") : original;
+  return `${stem || "image"}.${fileExtFromMime(mimeType)}`;
+}
+
+async function readFileAsDataUrl(file: File): Promise<string> {
+  return await new Promise<string>((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onerror = () => reject(new Error("read-failed"));
+    reader.onload = () => {
+      const result = reader.result;
+      if (typeof result === "string") resolve(result);
+      else reject(new Error("read-invalid"));
+    };
+    reader.readAsDataURL(file);
+  });
+}
+
+async function loadImageForCompression(dataUrl: string): Promise<HTMLImageElement> {
+  return await new Promise<HTMLImageElement>((resolve, reject) => {
+    const img = new Image();
+    img.onload = () => resolve(img);
+    img.onerror = () => reject(new Error("decode-failed"));
+    img.src = dataUrl;
+  });
+}
+
+function dataUrlByteLength(dataUrl: string): number {
+  return new TextEncoder().encode(dataUrl).length;
+}
+
+async function preprocessUploadImage(file: File): Promise<ProcessedUploadImage> {
+  if (!file.type.startsWith("image/")) {
+    throw new Error("not-image");
+  }
+
+  if (isGifFile(file)) {
+    if (file.size > DASHBOARD_GIF_MAX_FILE_BYTES) {
+      throw new Error("gif-too-big");
+    }
+    const dataUrl = await readFileAsDataUrl(file);
+    return { dataUrl, mimeType: "image/gif", file };
+  }
+
+  const originalDataUrl = await readFileAsDataUrl(file);
+  const img = await loadImageForCompression(originalDataUrl);
+  const longestSide = Math.max(img.naturalWidth, img.naturalHeight, 1);
+  const scale = Math.min(1, DASHBOARD_IMAGE_MAX_DIMENSION_PX / longestSide);
+  const width = Math.max(1, Math.round(img.naturalWidth * scale));
+  const height = Math.max(1, Math.round(img.naturalHeight * scale));
+
+  const canvas = document.createElement("canvas");
+  canvas.width = width;
+  canvas.height = height;
+  const ctx = canvas.getContext("2d");
+  if (!ctx) throw new Error("canvas-failed");
+  ctx.drawImage(img, 0, 0, width, height);
+
+  const qualities = [0.82, 0.76, 0.7, 0.64];
+  const formats = ["image/webp", "image/jpeg"] as const;
+  let bestDataUrl = "";
+  let bestMime = "image/jpeg";
+
+  for (const mimeType of formats) {
+    for (const quality of qualities) {
+      const candidate = canvas.toDataURL(mimeType, quality);
+      if (!bestDataUrl || candidate.length < bestDataUrl.length) {
+        bestDataUrl = candidate;
+        bestMime = mimeType;
+      }
+      if (dataUrlByteLength(candidate) <= DASHBOARD_IMAGE_TARGET_MAX_DATA_URL_BYTES) {
+        const blob = await (await fetch(candidate)).blob();
+        const nextFile = new File([blob], buildUploadFilename(file, mimeType), { type: mimeType });
+        return { dataUrl: candidate, mimeType, file: nextFile };
+      }
+    }
+  }
+
+  if (bestDataUrl && dataUrlByteLength(bestDataUrl) <= DASHBOARD_IMAGE_TARGET_MAX_DATA_URL_BYTES) {
+    const blob = await (await fetch(bestDataUrl)).blob();
+    const nextFile = new File([blob], buildUploadFilename(file, bestMime), { type: bestMime });
+    return { dataUrl: bestDataUrl, mimeType: bestMime, file: nextFile };
+  }
+
+  throw new Error("too-big");
+}
+
 const variableOptions: PickerItem[] = [
   {
     id: "user",
@@ -1761,6 +1873,7 @@ export function DashboardGuildPageClient({
     top: number;
   } | null>(null);
   const [imageCardBgUploadBusy, setImageCardBgUploadBusy] = useState(false);
+  const [imageCardBgUploadError, setImageCardBgUploadError] = useState("");
   const [imageCardTypographyOpen, setImageCardTypographyOpen] = useState(false);
   const [welcomeEnabled, setWelcomeEnabled] = useState(true);
   const [skipBotAccounts, setSkipBotAccounts] = useState(true);
@@ -1778,6 +1891,7 @@ export function DashboardGuildPageClient({
   const welcomeDmImageInputRef = useRef<HTMLInputElement | null>(null);
   const welcomeDmImageDragDepthRef = useRef(0);
   const [welcomeDmImageZoneActive, setWelcomeDmImageZoneActive] = useState(false);
+  const [welcomeDmImageUploadError, setWelcomeDmImageUploadError] = useState("");
   const welcomeDmRichComposeRef = useRef(false);
   const dmRawInsertCaretRef = useRef<TextAreaInsertAnchor | null>(null);
   const dmPreviewInsertRangeRef = useRef<Range | null>(null);
@@ -1807,6 +1921,7 @@ export function DashboardGuildPageClient({
   const textImageInputRef = useRef<HTMLInputElement | null>(null);
   const textImageDragDepthRef = useRef(0);
   const [textImageZoneActive, setTextImageZoneActive] = useState(false);
+  const [textImageUploadError, setTextImageUploadError] = useState("");
   const embedDescriptionTextareaRef = useRef<HTMLTextAreaElement | null>(null);
   const embedDescInsertCaretRef = useRef<TextAreaInsertAnchor | null>(null);
   const embedColorInputRef = useRef<HTMLInputElement | null>(null);
@@ -3387,9 +3502,15 @@ export function DashboardGuildPageClient({
     event.target.value = "";
     if (!file || !file.type.startsWith("image/")) return;
     setImageCardBgUploadBusy(true);
+    setImageCardBgUploadError("");
     try {
+      const prepared = await preprocessUploadImage(file);
+      if (prepared.mimeType === "image/gif") {
+        setImageCardBgUploadError("Для фона карточки доступны только PNG, JPEG или WebP.");
+        return;
+      }
       const fd = new FormData();
-      fd.append("file", file);
+      fd.append("file", prepared.file);
       const res = await fetch(`/api/config/${guildId}/welcome-card-background`, {
         method: "POST",
         body: fd,
@@ -3415,9 +3536,18 @@ export function DashboardGuildPageClient({
         };
         setImageCard(next);
         setLastSavedConfig((ls) => (ls ? { ...ls, imageCard: next } : ls));
+        setImageCardBgUploadError("");
+      } else {
+        setImageCardBgUploadError(data.error?.trim() || "Не удалось загрузить изображение.");
       }
-    } catch {
-      /* сеть */
+    } catch (error) {
+      if (error instanceof Error && error.message === "gif-too-big") {
+        setImageCardBgUploadError(DASHBOARD_GIF_TOO_BIG_ERROR);
+      } else if (error instanceof Error && error.message === "too-big") {
+        setImageCardBgUploadError(DASHBOARD_FILE_TOO_BIG_ERROR);
+      } else {
+        setImageCardBgUploadError("Не удалось загрузить изображение.");
+      }
     } finally {
       setImageCardBgUploadBusy(false);
     }
@@ -3431,6 +3561,7 @@ export function DashboardGuildPageClient({
       backgroundImage: { enabled: false, path: "", filename: undefined },
     };
     setImageCard(next);
+    setImageCardBgUploadError("");
     setLastSavedConfig((ls) => (ls ? { ...ls, imageCard: next } : ls));
     void fetch(`/api/config/${guildId}/welcome-card-background`, {
       method: "DELETE",
@@ -3642,29 +3773,39 @@ export function DashboardGuildPageClient({
     }
   };
 
-  const processImageFile = (file: File | null | undefined) => {
+  const processImageFile = async (file: File | null | undefined) => {
     if (!file || !file.type.startsWith("image/")) return;
-    const reader = new FileReader();
-    reader.onload = () => {
-      const result = reader.result;
-      if (typeof result === "string") {
-        setTextImageDataUrl(result);
+    setTextImageUploadError("");
+    try {
+      const prepared = await preprocessUploadImage(file);
+      setTextImageDataUrl(prepared.dataUrl);
+    } catch (error) {
+      if (error instanceof Error && error.message === "gif-too-big") {
+        setTextImageUploadError(DASHBOARD_GIF_TOO_BIG_ERROR);
+      } else if (error instanceof Error && error.message === "too-big") {
+        setTextImageUploadError(DASHBOARD_FILE_TOO_BIG_ERROR);
+      } else {
+        setTextImageUploadError("Не удалось обработать изображение.");
       }
-    };
-    reader.readAsDataURL(file);
+    }
   };
 
-  const processDmImageFile = (file: File | null | undefined) => {
+  const processDmImageFile = async (file: File | null | undefined) => {
     if (!file || !file.type.startsWith("image/")) return;
-    const reader = new FileReader();
-    reader.onload = () => {
-      const result = reader.result;
-      if (typeof result === "string") {
-        setWelcomeDmImageDataUrl(result);
-        setWelcomeDmImageFilename(file.name || "");
+    setWelcomeDmImageUploadError("");
+    try {
+      const prepared = await preprocessUploadImage(file);
+      setWelcomeDmImageDataUrl(prepared.dataUrl);
+      setWelcomeDmImageFilename(prepared.file.name || "");
+    } catch (error) {
+      if (error instanceof Error && error.message === "gif-too-big") {
+        setWelcomeDmImageUploadError(DASHBOARD_GIF_TOO_BIG_ERROR);
+      } else if (error instanceof Error && error.message === "too-big") {
+        setWelcomeDmImageUploadError(DASHBOARD_FILE_TOO_BIG_ERROR);
+      } else {
+        setWelcomeDmImageUploadError("Не удалось обработать изображение.");
       }
-    };
-    reader.readAsDataURL(file);
+    }
   };
 
   const handleTextImageInput = (event: ChangeEvent<HTMLInputElement>) => {
@@ -4177,7 +4318,10 @@ export function DashboardGuildPageClient({
                                   type="button"
                                   aria-label="Удалить изображение"
                                   title="Удалить изображение"
-                                  onClick={() => setTextImageDataUrl("")}
+                                  onClick={() => {
+                                    setTextImageDataUrl("");
+                                    setTextImageUploadError("");
+                                  }}
                                   className="pointer-events-auto inline-flex size-8 shrink-0 items-center justify-center rounded-full border border-white/[0.09] bg-zinc-950/52 text-zinc-300 shadow-[0_8px_32px_rgba(0,0,0,0.35),0_2px_12px_rgba(0,0,0,0.2)] backdrop-blur-2xl backdrop-saturate-150 transition hover:bg-zinc-900/65 hover:text-zinc-100"
                                 >
                                   <IconTrashCompact className="h-4 w-4" />
@@ -4185,6 +4329,11 @@ export function DashboardGuildPageClient({
                               </div>
                             </div>
                           </div>
+                        ) : null}
+                        {welcomeStyle === "text" && textImageUploadError ? (
+                          <p className="px-3 pb-3 text-xs text-rose-300 sm:px-3.5 sm:pb-3.5">
+                            {textImageUploadError}
+                          </p>
                         ) : null}
                       </div>
 
@@ -5054,6 +5203,11 @@ export function DashboardGuildPageClient({
                                     <Upload className="size-4" strokeWidth={1.85} aria-hidden />
                                   )}
                                 </button>
+                                {imageCardBgUploadError ? (
+                                  <p className="absolute bottom-2 left-2 right-2 z-30 rounded-md bg-[#2a1216]/85 px-2 py-1 text-[11px] leading-4 text-rose-200">
+                                    {imageCardBgUploadError}
+                                  </p>
+                                ) : null}
                               </>
                             ) : null}
                             <div
@@ -5400,6 +5554,7 @@ export function DashboardGuildPageClient({
                                   onClick={() => {
                                     setWelcomeDmImageDataUrl("");
                                     setWelcomeDmImageFilename("");
+                                    setWelcomeDmImageUploadError("");
                                   }}
                                   className="pointer-events-auto inline-flex size-8 shrink-0 items-center justify-center rounded-full border border-white/[0.09] bg-zinc-950/52 text-zinc-300 shadow-[0_8px_32px_rgba(0,0,0,0.35),0_2px_12px_rgba(0,0,0,0.2)] backdrop-blur-2xl backdrop-saturate-150 transition hover:bg-zinc-900/65 hover:text-zinc-100"
                                 >
@@ -5408,6 +5563,11 @@ export function DashboardGuildPageClient({
                               </div>
                             </div>
                           </div>
+                        ) : null}
+                        {welcomeDmImageUploadError ? (
+                          <p className="px-3 pb-3 text-xs text-rose-300 sm:px-3.5 sm:pb-3.5">
+                            {welcomeDmImageUploadError}
+                          </p>
                         ) : null}
                       </div>
                     </section>
