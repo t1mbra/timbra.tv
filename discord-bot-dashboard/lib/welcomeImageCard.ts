@@ -21,7 +21,13 @@ import {
   type ImageCardFontWeight,
   type ImageCardTextSizePreset,
 } from "./welcomeImageCardLayout";
-import { canvasFontFamilyName, ensureWelcomeCardFontsRegistered } from "./registerWelcomeCardFonts";
+import {
+  canvasFontFamilyName,
+  didWelcomeCardFontRegister,
+  ensureWelcomeCardFontsRegistered,
+} from "./registerWelcomeCardFonts";
+
+const loggedFontResolutionKeys = new Set<string>();
 
 export type ImageCardBackgroundMode = "gradient" | "solid" | "image" | "transparent";
 
@@ -289,10 +295,15 @@ export async function generateWelcomeImageCardPngBuffer(
   const requestedFont = input.fontFamily ?? DEFAULT_IMAGE_CARD_FONT;
   const { resolved: cardFontKey } = resolveImageCardFontForRendering(requestedFont, fontDir);
   const ff = canvasFontFamilyName(cardFontKey);
-  if (process.env.NODE_ENV === "development") {
-    console.log("[welcomeCard png]", {
-      requestedFont,
-      resolvedFont: cardFontKey,
+  const registerOk = didWelcomeCardFontRegister(fontDir, cardFontKey);
+  const logKey = `${fontDir}|${requestedFont}|${cardFontKey}|${registerOk ? "ok" : "fail"}`;
+  if (!loggedFontResolutionKeys.has(logKey)) {
+    loggedFontResolutionKeys.add(logKey);
+    console.log("[welcomeCard png font]", {
+      selectedFontKey: requestedFont,
+      resolvedFontKey: cardFontKey,
+      fontDir,
+      registerFromPathSucceeded: registerOk,
       canvasFamily: ff,
     });
   }

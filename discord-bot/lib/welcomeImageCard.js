@@ -51,6 +51,7 @@ const FONT_NAMES = {
 };
 
 const FONT_KEYS = new Set(Object.keys(FONT_FILES));
+const loggedRenderFontResolutions = new Set();
 
 const PRESET_METRICS = {
   s: {
@@ -130,6 +131,16 @@ function resolveFontForRendering(requested, fontDir) {
   const req = typeof requested === "string" && FONT_KEYS.has(requested) ? requested : "inter";
   const full = path.join(fontDir, FONT_FILES[req]);
   if (existsSync(full)) {
+    const logKey = `${fontDir}|${req}|${req}|ok`;
+    if (!loggedRenderFontResolutions.has(logKey)) {
+      loggedRenderFontResolutions.add(logKey);
+      console.log("[welcomeImageCard font resolve]", {
+        selectedFontKey: req,
+        resolvedFontKey: req,
+        fontDir,
+        registerFromPathSucceeded: null,
+      });
+    }
     return { resolved: req, missingFile: false };
   }
   const available = Object.keys(FONT_FILES).filter((k) =>
@@ -140,7 +151,18 @@ function resolveFontForRendering(requested, fontDir) {
     return { resolved: "inter", missingFile: true };
   }
   const fallback = available.includes("inter") ? "inter" : available[0];
-  console.warn(`[welcomeImageCard] файл шрифта не найден: ${req} → ${fallback}`);
+  const logKey = `${fontDir}|${req}|${fallback}|missing`;
+  if (!loggedRenderFontResolutions.has(logKey)) {
+    loggedRenderFontResolutions.add(logKey);
+    console.warn(`[welcomeImageCard] файл шрифта не найден: ${req} → ${fallback}`);
+    console.log("[welcomeImageCard font resolve]", {
+      selectedFontKey: req,
+      resolvedFontKey: fallback,
+      fontDir,
+      registerFromPathSucceeded: null,
+      missingFile: true,
+    });
+  }
   return { resolved: fallback, missingFile: true };
 }
 
@@ -151,23 +173,34 @@ function canvasFontString(style, weight, sizePx, ff) {
 }
 
 const registeredFontDirs = new Set();
+const registrationStatusByDir = new Map();
 
 function ensureFonts(fontDir) {
   const dirKey = path.resolve(fontDir);
   if (registeredFontDirs.has(dirKey)) return;
+  const status = new Map();
   for (const key of Object.keys(FONT_FILES)) {
     const full = path.join(fontDir, FONT_FILES[key]);
     if (existsSync(full)) {
       try {
         GlobalFonts.registerFromPath(full, FONT_NAMES[key]);
+        status.set(key, true);
       } catch (e) {
+        status.set(key, false);
         console.warn("[welcomeImageCard] font register failed:", key, e?.message || e);
       }
     } else {
-      console.warn("[welcomeImageCard] font file missing:", full);
+      status.set(key, false);
     }
   }
+  registrationStatusByDir.set(dirKey, status);
   registeredFontDirs.add(dirKey);
+}
+
+function didFontRegister(fontDir, key) {
+  const byKey = registrationStatusByDir.get(path.resolve(fontDir));
+  if (!byKey) return false;
+  return byKey.get(key) === true;
 }
 
 function canvasFamily(key) {
@@ -392,6 +425,18 @@ async function generateWelcomeImageCardPngBuffer(input, fontDir) {
       : "inter";
   const { resolved: cardResolved } = resolveFontForRendering(cardFontReq, fontDir);
   const ff = canvasFamily(cardResolved);
+  const registerOk = didFontRegister(fontDir, cardResolved);
+  const renderLogKey = `${fontDir}|${cardFontReq}|${cardResolved}|${registerOk ? "ok" : "fail"}`;
+  if (!loggedRenderFontResolutions.has(renderLogKey)) {
+    loggedRenderFontResolutions.add(renderLogKey);
+    console.log("[welcomeImageCard png font]", {
+      selectedFontKey: cardFontReq,
+      resolvedFontKey: cardResolved,
+      fontDir,
+      registerFromPathSucceeded: registerOk,
+      canvasFamily: ff,
+    });
+  }
   const ffTitle = ff;
   const ffSub = ff;
 

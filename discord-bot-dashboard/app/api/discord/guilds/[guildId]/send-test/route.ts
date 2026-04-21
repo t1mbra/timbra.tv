@@ -22,6 +22,8 @@ type SendTestBody = {
   /** Тест ЛС: отправить текст текущему пользователю дашборда (OAuth), не в канал. */
   welcomeDeliveryMode?: string;
   welcomeDmMessage?: string;
+  welcomeDmImageDataUrl?: string;
+  welcomeDmImageFilename?: string;
   channelId?: string;
   welcomeStyle?: string;
   message?: string;
@@ -51,6 +53,29 @@ type SendTestBody = {
     showUsername?: boolean;
   };
 };
+
+function parseDataUrlImage(raw: string): { mime: string; bytes: Uint8Array } | null {
+  const m = /^data:([^;]+);base64,(.+)$/i.exec(raw.trim());
+  if (!m) return null;
+  try {
+    return { mime: m[1], bytes: new Uint8Array(Buffer.from(m[2], "base64")) };
+  } catch {
+    return null;
+  }
+}
+
+function toBlobPart(bytes: Uint8Array): ArrayBuffer {
+  return bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) as ArrayBuffer;
+}
+
+function pickAttachmentFilename(preferred: string | undefined, mime: string, fallback = "welcome-image"): string {
+  const safePreferred = typeof preferred === "string" ? preferred.trim().replace(/[^\w.\-]/g, "_") : "";
+  if (safePreferred) return safePreferred;
+  if (mime.includes("gif")) return `${fallback}.gif`;
+  if (mime.includes("webp")) return `${fallback}.webp`;
+  if (mime.includes("jpeg") || mime.includes("jpg")) return `${fallback}.jpg`;
+  return `${fallback}.png`;
+}
 
 const SNOWFLAKE_RE = /^\d{17,20}$/;
 
@@ -330,13 +355,39 @@ export async function POST(
       );
     }
 
+    const dmImageRaw =
+      typeof body.welcomeDmImageDataUrl === "string" ? body.welcomeDmImageDataUrl.trim() : "";
+    const dmImage = dmImageRaw.startsWith("data:") ? parseDataUrlImage(dmImageRaw) : null;
+
     let msgRes: Response;
     try {
-      msgRes = await discordFetch(`/channels/${dmChannelId}/messages`, {
-        method: "POST",
-        headers: botHeadersJson,
-        body: JSON.stringify({ content }),
-      });
+      if (dmImage) {
+        const filename = pickAttachmentFilename(
+          typeof body.welcomeDmImageFilename === "string" ? body.welcomeDmImageFilename : undefined,
+          dmImage.mime,
+          "welcome-dm"
+        );
+        const form = new FormData();
+        form.append(
+          "payload_json",
+          JSON.stringify({
+            content,
+            attachments: [{ id: 0, filename }],
+          })
+        );
+        form.append("files[0]", new Blob([toBlobPart(dmImage.bytes)], { type: dmImage.mime }), filename);
+        msgRes = await discordFetch(`/channels/${dmChannelId}/messages`, {
+          method: "POST",
+          headers: { Authorization: `Bot ${botToken}` },
+          body: form,
+        });
+      } else {
+        msgRes = await discordFetch(`/channels/${dmChannelId}/messages`, {
+          method: "POST",
+          headers: botHeadersJson,
+          body: JSON.stringify({ content }),
+        });
+      }
     } catch (err) {
       console.error("[send-test] DM message send failed:", err);
       return NextResponse.json(
@@ -533,14 +584,38 @@ export async function POST(
   if (welcomeStyle === "text") {
     const raw = typeof body.message === "string" ? body.message : "";
     const content = resolveTestVariables(raw);
+    const channelImageRaw = typeof body.textImageDataUrl === "string" ? body.textImageDataUrl.trim() : "";
+    const channelImage = channelImageRaw.startsWith("data:") ? parseDataUrlImage(channelImageRaw) : null;
 
     let msgRes: Response;
     try {
-      msgRes = await discordFetch(`/channels/${channelId}/messages`, {
-        method: "POST",
-        headers: botHeaders,
-        body: JSON.stringify({ content }),
-      });
+      if (channelImage) {
+        const filename = pickAttachmentFilename(undefined, channelImage.mime, "welcome-message");
+        const form = new FormData();
+        form.append(
+          "payload_json",
+          JSON.stringify({
+            ...(content.trim() ? { content } : {}),
+            attachments: [{ id: 0, filename }],
+          })
+        );
+        form.append(
+          "files[0]",
+          new Blob([toBlobPart(channelImage.bytes)], { type: channelImage.mime }),
+          filename
+        );
+        msgRes = await discordFetch(`/channels/${channelId}/messages`, {
+          method: "POST",
+          headers: { Authorization: `Bot ${botToken}` },
+          body: form,
+        });
+      } else {
+        msgRes = await discordFetch(`/channels/${channelId}/messages`, {
+          method: "POST",
+          headers: botHeaders,
+          body: JSON.stringify({ content }),
+        });
+      }
     } catch (err) {
       console.error("[send-test] message send failed:", err);
       return NextResponse.json(

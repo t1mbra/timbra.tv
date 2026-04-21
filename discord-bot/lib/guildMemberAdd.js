@@ -84,6 +84,7 @@ function hexToDiscordColor(hex) {
 const MAX_ATTACHMENT_BYTES = 8 * 1024 * 1024;
 
 const EMBED_ATTACH_NAME = "embed-welcome.png";
+const loggedFontDirUsage = new Set();
 
 /**
  * @param {string} raw
@@ -394,6 +395,10 @@ async function sendWelcome(member, config) {
 
     const sharedRoot = resolveSharedDataDir();
     const fontDir = resolveWelcomeCardFontDir();
+    if (!loggedFontDirUsage.has(fontDir)) {
+      loggedFontDirUsage.add(fontDir);
+      console.log("[welcome] imageCard font dir", { fontDir });
+    }
     const backgroundImageDataUrl =
       typeof ic.backgroundImageDataUrl === "string" ? ic.backgroundImageDataUrl.trim() : "";
     const backgroundImagePath =
@@ -588,7 +593,7 @@ async function sendWelcome(member, config) {
 }
 
 /**
- * Приветствие в ЛС (только текст из welcomeDmMessage / fallback message).
+ * Приветствие в ЛС (текст + опциональная картинка из welcomeDmImageDataUrl).
  * Канальная копия с embed/imageCard выполняется через sendWelcome при режиме both.
  * @param {import('discord.js').GuildMember} member
  * @param {Record<string, unknown>} config
@@ -608,11 +613,23 @@ async function sendWelcomeDm(member, config) {
         ? config.message
         : "";
   const dmContent = resolveTemplate(dmTemplateRaw, ctx).trim();
-  if (!dmContent) {
-    console.log("[welcome] DM skipped: empty welcomeDmMessage", { member: member.user.tag });
+  const dmImageRaw = config.welcomeDmImageDataUrl;
+  const dmAttachment =
+    dmImageRaw && String(dmImageRaw).trim()
+      ? await resolveTextWelcomeAttachment(dmImageRaw, ctx)
+      : null;
+  if (!dmContent && !dmAttachment) {
+    console.log("[welcome] DM skipped: empty welcomeDmMessage and no usable image", {
+      member: member.user.tag,
+    });
   } else {
     try {
-      await member.user.send({ content: dmContent });
+      /** @type {import('discord.js').AttachmentBuilder[]} */
+      const files = dmAttachment ? [dmAttachment] : [];
+      await member.user.send({
+        ...(dmContent ? { content: dmContent } : {}),
+        ...(files.length ? { files } : {}),
+      });
       console.log(`[welcome] DM welcome sent for ${member.user.tag}`);
     } catch (err) {
       const e = /** @type {Error & { code?: number }} */ (err);

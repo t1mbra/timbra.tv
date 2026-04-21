@@ -39,6 +39,8 @@ function resolveWelcomeCardFontDir() {
     candidates.push(path.resolve(String(env).trim()));
   }
   candidates.push(
+    path.resolve(process.cwd(), "assets/fonts/welcome-card"),
+    path.resolve(process.cwd(), "../assets/fonts/welcome-card"),
     path.resolve(process.cwd(), "shared-assets/fonts/welcome-card"),
     path.resolve(process.cwd(), "../shared-assets/fonts/welcome-card"),
     path.join(resolveSharedDataDir(), "fonts", "welcome-card")
@@ -52,7 +54,7 @@ function resolveWelcomeCardFontDir() {
     if (welcomeCardFontDirHasAnyFont(resolved)) return resolved;
   }
 
-  return path.resolve(process.cwd(), "../shared-assets/fonts/welcome-card");
+  return path.resolve(process.cwd(), "assets/fonts/welcome-card");
 }
 
 module.exports = {

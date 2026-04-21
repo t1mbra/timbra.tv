@@ -8,6 +8,8 @@ import {
   type ImageCardFontKey,
 } from "./welcomeCardConstants";
 
+const loggedRenderFontResolutions = new Set<string>();
+
 /** Ключи шрифтов, для которых есть локальный .ttf в каталоге */
 export function listAvailableWelcomeCardFontKeys(fontDir: string): ImageCardFontKey[] {
   return IMAGE_CARD_FONT_KEYS.filter((k) => existsSync(path.join(fontDir, IMAGE_CARD_FONT_FILES[k])));
@@ -30,11 +32,14 @@ export function resolveImageCardFontForRendering(
   const available = listAvailableWelcomeCardFontKeys(fontDir);
   const reqPath = path.join(fontDir, IMAGE_CARD_FONT_FILES[requested]);
   if (existsSync(reqPath)) {
-    if (process.env.NODE_ENV === "development") {
-      console.log("[welcomeCard font]", {
-        requested,
-        resolved: requested,
-        path: reqPath,
+    const logKey = `${fontDir}|${requested}|${requested}|ok`;
+    if (!loggedRenderFontResolutions.has(logKey)) {
+      loggedRenderFontResolutions.add(logKey);
+      console.log("[welcomeCard font resolve]", {
+        selectedFontKey: requested,
+        resolvedFontKey: requested,
+        fontDir,
+        registerFromPathSucceeded: null,
       });
     }
     return { resolved: requested, missingFile: false };
@@ -46,14 +51,17 @@ export function resolveImageCardFontForRendering(
   const fallback = available.includes(DEFAULT_IMAGE_CARD_FONT)
     ? DEFAULT_IMAGE_CARD_FONT
     : available[0];
-  console.warn(
-    `[welcomeCard] файл шрифта не найден: ${requested} → ${fallback} (${reqPath})`
-  );
-  if (process.env.NODE_ENV === "development") {
-    console.log("[welcomeCard font]", {
-      requested,
-      resolved: fallback,
-      path: path.join(fontDir, IMAGE_CARD_FONT_FILES[fallback]),
+  const logKey = `${fontDir}|${requested}|${fallback}|missing`;
+  if (!loggedRenderFontResolutions.has(logKey)) {
+    loggedRenderFontResolutions.add(logKey);
+    console.warn(
+      `[welcomeCard] файл шрифта не найден: ${requested} → ${fallback} (${reqPath})`
+    );
+    console.log("[welcomeCard font resolve]", {
+      selectedFontKey: requested,
+      resolvedFontKey: fallback,
+      fontDir,
+      registerFromPathSucceeded: null,
       missingFile: true,
     });
   }

@@ -21,6 +21,8 @@ const defaultGuildConfig: GuildConfig = {
   skipBotAccounts: true,
   welcomeDeliveryMode: "channel" as const,
   welcomeDmMessage: "Добро пожаловать, {user}! ✨",
+  welcomeDmImageDataUrl: "",
+  welcomeDmImageFilename: "",
   welcomeDmAlsoSendToChannel: false,
   welcomeDmChannelId: "",
   welcomeDmChannelMessage: "Добро пожаловать, {user}! ✨",
@@ -62,6 +64,8 @@ function mergeDeliveryWithDefaults(
   GuildConfig,
   | "welcomeDeliveryMode"
   | "welcomeDmMessage"
+  | "welcomeDmImageDataUrl"
+  | "welcomeDmImageFilename"
   | "welcomeDmAlsoSendToChannel"
   | "welcomeDmChannelId"
   | "welcomeDmChannelMessage"
@@ -71,6 +75,10 @@ function mergeDeliveryWithDefaults(
     welcomeDeliveryMode: mode,
     welcomeDmMessage:
       typeof g?.welcomeDmMessage === "string" ? g.welcomeDmMessage : baseMessage,
+    welcomeDmImageDataUrl:
+      typeof g?.welcomeDmImageDataUrl === "string" ? g.welcomeDmImageDataUrl : "",
+    welcomeDmImageFilename:
+      typeof g?.welcomeDmImageFilename === "string" ? g.welcomeDmImageFilename : "",
     welcomeDmAlsoSendToChannel: mode === "both",
     welcomeDmChannelId:
       typeof g?.welcomeDmChannelId === "string" ? g.welcomeDmChannelId : baseChannelId,
@@ -148,6 +156,10 @@ export async function POST(
       botRoleId: body.botRoleId ?? "",
       skipBotAccounts: body.skipBotAccounts ?? true,
       ...mergeDeliveryWithDefaults(body as Partial<GuildConfig>, mergedMessage, mergedChannelId),
+      welcomeDmImageDataUrl:
+        typeof body.welcomeDmImageDataUrl === "string" ? body.welcomeDmImageDataUrl : "",
+      welcomeDmImageFilename:
+        typeof body.welcomeDmImageFilename === "string" ? body.welcomeDmImageFilename : "",
       welcomeStyle: body.welcomeStyle ?? defaultGuildConfig.welcomeStyle,
       textImageDataUrl: body.textImageDataUrl ?? "",
       message: body.message ?? defaultGuildConfig.message,

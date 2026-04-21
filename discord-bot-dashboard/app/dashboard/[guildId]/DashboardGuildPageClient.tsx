@@ -179,6 +179,8 @@ type DashboardConfig = {
   skipBotAccounts: boolean;
   welcomeDeliveryMode: WelcomeDeliveryMode;
   welcomeDmMessage: string;
+  welcomeDmImageDataUrl?: string;
+  welcomeDmImageFilename?: string;
   welcomeDmAlsoSendToChannel: boolean;
   welcomeDmChannelId: string;
   welcomeDmChannelMessage: string;
@@ -212,6 +214,8 @@ type DirtyConfig = {
   skipBotAccounts: boolean;
   welcomeDeliveryMode: WelcomeDeliveryMode;
   welcomeDmMessage: string;
+  welcomeDmImageDataUrl: string;
+  welcomeDmImageFilename: string;
   welcomeDmAlsoSendToChannel: boolean;
   welcomeDmChannelId: string;
   welcomeDmChannelMessage: string;
@@ -232,6 +236,7 @@ type DirtyConfig = {
   // Если поле отсутствовало, изменения в соответствующем UI не должны считаться "dirty".
   welcomeStyleExists: boolean;
   textImageDataUrlExists: boolean;
+  welcomeDmImageDataUrlExists: boolean;
   imageCardExists: boolean;
 };
 
@@ -243,6 +248,8 @@ function configsEqual(a: DirtyConfig, b: DirtyConfig): boolean {
   if (a.skipBotAccounts !== b.skipBotAccounts) return false;
   if (a.welcomeDeliveryMode !== b.welcomeDeliveryMode) return false;
   if (a.welcomeDmMessage !== b.welcomeDmMessage) return false;
+  if (a.welcomeDmImageDataUrl !== b.welcomeDmImageDataUrl) return false;
+  if (a.welcomeDmImageFilename !== b.welcomeDmImageFilename) return false;
   if (a.welcomeDmAlsoSendToChannel !== b.welcomeDmAlsoSendToChannel) return false;
   if (a.welcomeDmChannelId !== b.welcomeDmChannelId) return false;
   if (a.welcomeDmChannelMessage !== b.welcomeDmChannelMessage) return false;
@@ -259,6 +266,7 @@ function configsEqual(a: DirtyConfig, b: DirtyConfig): boolean {
 
   if (b.welcomeStyleExists && a.welcomeStyle !== b.welcomeStyle) return false;
   if (b.textImageDataUrlExists && a.textImageDataUrl !== b.textImageDataUrl) return false;
+  if (b.welcomeDmImageDataUrlExists && a.welcomeDmImageDataUrl !== b.welcomeDmImageDataUrl) return false;
   if (b.imageCardExists && !imageCardConfigsEqual(a.imageCard, b.imageCard)) return false;
 
   return true;
@@ -426,9 +434,23 @@ const WELCOME_HISTORY_DEBOUNCE_MS = 550;
 
 /** Подпись сервера в превью без запроса списка гильдий */
 const PREVIEW_SERVER_LABEL = "Панель сервера";
-const PREVIEW_USERNAME = "Timbra";
-const PREVIEW_USER_AT = "@Timbra";
+const PREVIEW_USERNAME_FALLBACK = "Timbra";
 const PREVIEW_MEMBER_COUNT = "128";
+
+function previewTemplateDisplayValues(viewerName: string | null): {
+  userAt: string;
+  username: string;
+  server: string;
+  memberCount: string;
+} {
+  const normalized = viewerName?.trim() || PREVIEW_USERNAME_FALLBACK;
+  return {
+    userAt: `@${normalized}`,
+    username: normalized,
+    server: PREVIEW_SERVER_LABEL,
+    memberCount: PREVIEW_MEMBER_COUNT,
+  };
+}
 
 function previewLightenHex(hex: string): string {
   const s = hex.trim().replace(/^#/, "");
@@ -443,11 +465,12 @@ function previewLightenHex(hex: string): string {
 /** Плейсхолдеры для превью карточки (согласовано с тестовой отправкой) */
 function applyWelcomeImageCardPreviewPlaceholders(text: string): string {
   const dateStr = new Date().toLocaleDateString();
+  const v = previewTemplateDisplayValues(null);
   return text
-    .replaceAll("{user}", PREVIEW_USER_AT)
-    .replaceAll("{username}", PREVIEW_USERNAME)
-    .replaceAll("{server}", PREVIEW_SERVER_LABEL)
-    .replaceAll("{memberCount}", PREVIEW_MEMBER_COUNT)
+    .replaceAll("{user}", v.userAt)
+    .replaceAll("{username}", v.username)
+    .replaceAll("{server}", v.server)
+    .replaceAll("{memberCount}", v.memberCount)
     .replaceAll("{date}", dateStr);
 }
 
@@ -785,18 +808,12 @@ function tokenizeWelcomePreview(input: string): WelcomePreviewToken[] {
 }
 
 const WELCOME_SRC_ATTR = "data-welcome-src";
+const WELCOME_TOKEN_ATTR = "data-welcome-token";
 /** Плейсхолдеры `{username}` и т.п.: видны как текст, лёгкий hover, удаление целиком по Backspace/Delete внутри */
 const WELCOME_TEMPLATE_VARIABLE_ATTR = "data-template-variable";
 const WELCOME_TEMPLATE_VARIABLE_CLASS = "welcome-template-variable";
 /** Интерактивные токены Preview: канал, роль, emoji, {user} больше не относится — см. шаблонные span */
 const WELCOME_INTERACTIVE_TOKEN = "welcome-interactive-token";
-const WELCOME_TOKEN_SELECTED = "welcome-interactive-token--selected";
-
-function clearWelcomeTokenSelection(root: HTMLElement) {
-  root.querySelectorAll(`.${WELCOME_TOKEN_SELECTED}`).forEach((n) =>
-    n.classList.remove(WELCOME_TOKEN_SELECTED)
-  );
-}
 
 /** Цвет точки в пикере ролей из нативного integer Discord */
 function discordRoleDotFill(color: number | undefined): string {
@@ -812,6 +829,10 @@ type WelcomeRichDomContext = {
   roleById: Map<string, GuildRole>;
   emojiMetaById: Map<string, boolean>;
   previewDateStr: string;
+  previewUserAt: string;
+  previewUsername: string;
+  previewServerLabel: string;
+  previewMemberCount: string;
 };
 
 function serializeWelcomeFlatNode(node: Node): string {
@@ -820,7 +841,6 @@ function serializeWelcomeFlatNode(node: Node): string {
   const el = node as HTMLElement;
   if (el.tagName === "BR") return "\n";
   const src = el.getAttribute(WELCOME_SRC_ATTR);
-  if (src !== null && el.hasAttribute(WELCOME_TEMPLATE_VARIABLE_ATTR)) return src;
   if (src !== null) return src;
   let s = "";
   for (let i = 0; i < el.childNodes.length; i++) {
@@ -868,21 +888,9 @@ function getWelcomePlainCaretOffset(root: HTMLElement): number {
         offset += range.startOffset;
       } else if (node.nodeType === Node.ELEMENT_NODE) {
         const el = node as HTMLElement;
-        if (el.hasAttribute(WELCOME_TEMPLATE_VARIABLE_ATTR)) {
-          const src = el.getAttribute(WELCOME_SRC_ATTR) ?? "";
-          const r = document.createRange();
-          r.setStart(el, 0);
-          r.setEnd(range.startContainer, range.startOffset);
-          const innerVis = r.toString().length;
-          const visLen = el.textContent?.length ?? 0;
-          const plainInner =
-            visLen === 0 ? 0 : Math.min(src.length, Math.round((innerVis * src.length) / visLen));
-          offset += plainInner;
-        } else {
-          const src = el.getAttribute(WELCOME_SRC_ATTR);
-          if (src !== null) {
-            offset += range.startOffset >= 1 ? src.length : 0;
-          }
+        const src = el.getAttribute(WELCOME_SRC_ATTR);
+        if (src !== null) {
+          offset += range.startOffset >= 1 ? src.length : 0;
         }
       }
       found = true;
@@ -896,23 +904,6 @@ function getWelcomePlainCaretOffset(root: HTMLElement): number {
     const el = node as HTMLElement;
     if (el.tagName === "BR") {
       offset += 1;
-      return;
-    }
-    if (el.hasAttribute(WELCOME_TEMPLATE_VARIABLE_ATTR)) {
-      const src = el.getAttribute(WELCOME_SRC_ATTR) ?? "";
-      if (el.contains(range.startContainer)) {
-        const r = document.createRange();
-        r.setStart(el, 0);
-        r.setEnd(range.startContainer, range.startOffset);
-        const innerVis = r.toString().length;
-        const visLen = el.textContent?.length ?? 0;
-        const plainInner =
-          visLen === 0 ? 0 : Math.min(src.length, Math.round((innerVis * src.length) / visLen));
-        offset += plainInner;
-        found = true;
-      } else {
-        offset += src.length;
-      }
       return;
     }
     const src = el.getAttribute(WELCOME_SRC_ATTR);
@@ -964,38 +955,6 @@ function setWelcomePlainCaretOffset(root: HTMLElement, target: number): void {
       acc += 1;
       return false;
     }
-    if (el.hasAttribute(WELCOME_TEMPLATE_VARIABLE_ATTR)) {
-      const src = el.getAttribute(WELCOME_SRC_ATTR) ?? "";
-      const visLen = el.textContent?.length ?? 0;
-      if (target < acc + src.length) {
-        const innerPlain = Math.max(0, target - acc);
-        const innerVis =
-          src.length === 0
-            ? 0
-            : Math.min(visLen, Math.round((innerPlain * visLen) / src.length));
-        const tn = Array.from(el.childNodes).find((c) => c.nodeType === Node.TEXT_NODE);
-        if (tn) {
-          const tlen = (tn.textContent ?? "").length;
-          const o = Math.min(innerVis, tlen);
-          const r = document.createRange();
-          r.setStart(tn, o);
-          r.collapse(true);
-          sel?.removeAllRanges();
-          sel?.addRange(r);
-          return true;
-        }
-      }
-      if (acc + src.length >= target) {
-        const r = document.createRange();
-        r.setStartAfter(el);
-        r.collapse(true);
-        sel?.removeAllRanges();
-        sel?.addRange(r);
-        return true;
-      }
-      acc += src.length;
-      return false;
-    }
     const src = el.getAttribute(WELCOME_SRC_ATTR);
     if (src !== null) {
       if (acc + src.length >= target) {
@@ -1032,6 +991,13 @@ function findWelcomeTemplateVariableSpan(node: Node | null, root: HTMLElement): 
   return span && root.contains(span) ? (span as HTMLElement) : null;
 }
 
+function findWelcomeTokenSpan(node: Node | null, root: HTMLElement): HTMLElement | null {
+  const el =
+    node?.nodeType === Node.TEXT_NODE ? (node.parentElement as HTMLElement | null) : (node as HTMLElement | null);
+  const span = el?.closest(`[${WELCOME_TOKEN_ATTR}="true"]`) ?? null;
+  return span && root.contains(span) ? (span as HTMLElement) : null;
+}
+
 function caretPlainOffsetWithinTemplateVarSpan(
   span: HTMLElement,
   container: Node,
@@ -1060,15 +1026,11 @@ function tryHandleWelcomeTemplateVariableKeydown(
   const span = findWelcomeTemplateVariableSpan(range.startContainer, editor);
   if (!span) return false;
 
-  const src = span.getAttribute(WELCOME_SRC_ATTR) ?? "";
-  const innerVis = caretPlainOffsetWithinTemplateVarSpan(span, range.startContainer, range.startOffset);
-  const visLen = span.textContent?.length ?? 0;
-  const plainInner =
-    visLen === 0 ? 0 : Math.min(src.length, Math.round((innerVis * src.length) / visLen));
+  const inner = caretPlainOffsetWithinTemplateVarSpan(span, range.startContainer, range.startOffset);
 
   event.preventDefault();
   const caretBefore = getWelcomePlainCaretOffset(editor);
-  const newCaret = caretBefore - plainInner;
+  const newCaret = caretBefore - inner;
   span.remove();
   normalizeWelcomeRichDivs(editor);
   const max = serializeWelcomeRichEditorRoot(editor).length;
@@ -1077,17 +1039,69 @@ function tryHandleWelcomeTemplateVariableKeydown(
   return true;
 }
 
+function tryHandleWelcomeTokenBoundaryDelete(
+  editor: HTMLElement,
+  event: KeyboardEvent<HTMLDivElement>,
+  onMutated: () => void
+): boolean {
+  if (event.key !== "Backspace" && event.key !== "Delete") return false;
+  const sel = window.getSelection();
+  if (!sel || sel.rangeCount === 0) return false;
+  const range = sel.getRangeAt(0);
+  if (!editor.contains(range.commonAncestorContainer) || !range.collapsed) return false;
+  const token = findWelcomeTokenSpan(range.startContainer, editor);
+  if (token) return false;
+
+  let target: HTMLElement | null = null;
+  const container = range.startContainer;
+  const offset = range.startOffset;
+  if (container.nodeType === Node.TEXT_NODE) {
+    const text = container.textContent ?? "";
+    if (event.key === "Backspace" && offset === 0) {
+      const prev = container.previousSibling;
+      if (prev?.nodeType === Node.ELEMENT_NODE && (prev as HTMLElement).getAttribute(WELCOME_TOKEN_ATTR) === "true") {
+        target = prev as HTMLElement;
+      }
+    }
+    if (event.key === "Delete" && offset === text.length) {
+      const next = container.nextSibling;
+      if (next?.nodeType === Node.ELEMENT_NODE && (next as HTMLElement).getAttribute(WELCOME_TOKEN_ATTR) === "true") {
+        target = next as HTMLElement;
+      }
+    }
+  } else if (container.nodeType === Node.ELEMENT_NODE) {
+    const el = container as HTMLElement;
+    const child =
+      event.key === "Backspace" ? el.childNodes[offset - 1] ?? null : el.childNodes[offset] ?? null;
+    if (child?.nodeType === Node.ELEMENT_NODE && (child as HTMLElement).getAttribute(WELCOME_TOKEN_ATTR) === "true") {
+      target = child as HTMLElement;
+    }
+  }
+  if (!target) return false;
+  event.preventDefault();
+  const delRange = document.createRange();
+  delRange.selectNode(target);
+  sel.removeAllRanges();
+  sel.addRange(delRange);
+  document.execCommand("delete");
+  onMutated();
+  return true;
+}
+
 function buildWelcomeTemplateVariableSpan(
   variableId: string,
   literal: string,
-  previewVisible: string
+  previewValue: string
 ): HTMLSpanElement {
   const span = document.createElement("span");
+  span.setAttribute(WELCOME_TOKEN_ATTR, "true");
   span.setAttribute(WELCOME_TEMPLATE_VARIABLE_ATTR, variableId);
   span.setAttribute(WELCOME_SRC_ATTR, literal);
+  span.setAttribute("data-token-type", "template");
+  span.contentEditable = "false";
   span.className = WELCOME_TEMPLATE_VARIABLE_CLASS;
   span.title = literal;
-  span.textContent = previewVisible;
+  span.textContent = previewValue;
   return span;
 }
 
@@ -1100,8 +1114,13 @@ function buildWelcomeDomForToken(tok: WelcomePreviewToken, ctx: WelcomeRichDomCo
     const useGif = tok.animated || ctx.emojiMetaById.get(tok.id) === true;
     const ext = useGif ? "gif" : "png";
     const srcMention = tok.animated ? `<a:${tok.name}:${tok.id}>` : `<:${tok.name}:${tok.id}>`;
+    const wrap = document.createElement("span");
+    wrap.setAttribute(WELCOME_SRC_ATTR, srcMention);
+    wrap.setAttribute(WELCOME_TOKEN_ATTR, "true");
+    wrap.setAttribute("data-token-type", "emoji");
+    wrap.contentEditable = "false";
+    wrap.className = "welcome-emoji-inline align-text-bottom";
     const img = document.createElement("img");
-    img.setAttribute(WELCOME_SRC_ATTR, srcMention);
     img.setAttribute("alt", "");
     img.setAttribute("draggable", "false");
     img.className =
@@ -1114,13 +1133,16 @@ function buildWelcomeDomForToken(tok: WelcomePreviewToken, ctx: WelcomeRichDomCo
       fallback.setAttribute(WELCOME_SRC_ATTR, srcMention);
       fallback.textContent = `:${tok.name}:`;
       fallback.className = "text-sm text-zinc-400";
-      img.replaceWith(fallback);
+      wrap.replaceWith(fallback);
     };
-    return img;
+    wrap.appendChild(img);
+    return wrap;
   }
   if (tok.kind === "channel") {
     const ch = ctx.channelById.get(tok.id);
     const span = document.createElement("span");
+    span.setAttribute(WELCOME_TOKEN_ATTR, "true");
+    span.setAttribute("data-token-type", "channel");
     span.setAttribute(WELCOME_SRC_ATTR, `<#${tok.id}>`);
     span.contentEditable = "false";
     span.className = `${mentionPillBase} ${WELCOME_INTERACTIVE_TOKEN} welcome-token-channel bg-[#5865F2]/28 text-[#c9d4ff]`;
@@ -1131,6 +1153,8 @@ function buildWelcomeDomForToken(tok: WelcomePreviewToken, ctx: WelcomeRichDomCo
   if (tok.kind === "role") {
     const role = ctx.roleById.get(tok.id);
     const span = document.createElement("span");
+    span.setAttribute(WELCOME_TOKEN_ATTR, "true");
+    span.setAttribute("data-token-type", "role");
     span.setAttribute(WELCOME_SRC_ATTR, `<@&${tok.id}>`);
     span.contentEditable = "false";
     const style = rolePreviewPillStyle(role?.color);
@@ -1144,16 +1168,19 @@ function buildWelcomeDomForToken(tok: WelcomePreviewToken, ctx: WelcomeRichDomCo
     return span;
   }
   if (tok.kind === "userVar") {
-    return buildWelcomeTemplateVariableSpan("user", "{user}", PREVIEW_USER_AT);
+    const span = buildWelcomeTemplateVariableSpan("user", "{user}", ctx.previewUserAt);
+    span.setAttribute("data-token-type", "mention");
+    span.classList.add("welcome-template-variable-user");
+    return span;
   }
   if (tok.kind === "usernameVar") {
-    return buildWelcomeTemplateVariableSpan("username", "{username}", PREVIEW_USERNAME);
+    return buildWelcomeTemplateVariableSpan("username", "{username}", ctx.previewUsername);
   }
   if (tok.kind === "serverVar") {
-    return buildWelcomeTemplateVariableSpan("server", "{server}", PREVIEW_SERVER_LABEL);
+    return buildWelcomeTemplateVariableSpan("server", "{server}", ctx.previewServerLabel);
   }
   if (tok.kind === "memberCountVar") {
-    const span = buildWelcomeTemplateVariableSpan("memberCount", "{memberCount}", PREVIEW_MEMBER_COUNT);
+    const span = buildWelcomeTemplateVariableSpan("memberCount", "{memberCount}", ctx.previewMemberCount);
     span.classList.add("tabular-nums");
     return span;
   }
@@ -1175,16 +1202,44 @@ function fillWelcomeRichEditor(el: HTMLElement, message: string, ctx: WelcomeRic
   });
 }
 
-function createWelcomeInsertNode(insert: string, ctx: WelcomeRichDomContext): Node {
-  const tokens = tokenizeWelcomePreview(insert);
-  if (
-    tokens.length === 1 &&
-    tokens[0].kind !== "text" &&
-    insert.length > 0
-  ) {
-    return buildWelcomeDomForToken(tokens[0], ctx);
+function createWelcomeInsertNodesFromPlainText(insert: string, ctx: WelcomeRichDomContext): Node[] {
+  if (!insert) return [];
+  const nodes: Node[] = [];
+  const lines = insert.split("\n");
+  lines.forEach((line, idx) => {
+    if (idx > 0) nodes.push(document.createElement("br"));
+    const tokens = tokenizeWelcomePreview(line);
+    for (const token of tokens) nodes.push(buildWelcomeDomForToken(token, ctx));
+  });
+  return nodes;
+}
+
+function createWelcomeInsertHtml(insert: string, ctx: WelcomeRichDomContext): string {
+  const holder = document.createElement("div");
+  const nodes = createWelcomeInsertNodesFromPlainText(insert, ctx);
+  for (const node of nodes) holder.appendChild(node);
+  return holder.innerHTML;
+}
+
+function normalizeCollapsedRangeForTemplateVariable(range: Range, editor: HTMLElement): Range {
+  if (!range.collapsed) return range;
+  const span = findWelcomeTokenSpan(range.startContainer, editor);
+  if (!span) return range;
+  const inner = (() => {
+    const r = document.createRange();
+    r.setStart(span, 0);
+    r.setEnd(range.startContainer, range.startOffset);
+    return r.toString().length;
+  })();
+  const len = span.textContent?.length ?? 0;
+  const r = range.cloneRange();
+  if (inner >= len / 2) {
+    r.setStartAfter(span);
+  } else {
+    r.setStartBefore(span);
   }
-  return document.createTextNode(insert);
+  r.collapse(true);
+  return r;
 }
 
 function insertWelcomeNodesAtCaret(editor: HTMLElement, nodes: Node[]) {
@@ -1204,6 +1259,7 @@ function insertWelcomeNodesAtCaret(editor: HTMLElement, nodes: Node[]) {
     range.selectNodeContents(editor);
     range.collapse(false);
   }
+  range = normalizeCollapsedRangeForTemplateVariable(range, editor);
   range.deleteContents();
   const frag = document.createDocumentFragment();
   let lastInserted: Node | null = null;
@@ -1221,6 +1277,31 @@ function insertWelcomeNodesAtCaret(editor: HTMLElement, nodes: Node[]) {
   }
   sel.removeAllRanges();
   sel.addRange(r);
+}
+
+function insertWelcomeHtmlAtCaret(editor: HTMLElement, html: string, fallbackNodes: Node[]): void {
+  editor.focus();
+  const sel = window.getSelection();
+  if (!sel) return;
+  let range: Range;
+  if (sel.rangeCount === 0 || !sel.anchorNode || !editor.contains(sel.anchorNode)) {
+    range = document.createRange();
+    range.selectNodeContents(editor);
+    range.collapse(false);
+  } else {
+    range = sel.getRangeAt(0);
+  }
+  if (!editor.contains(range.commonAncestorContainer)) {
+    range = document.createRange();
+    range.selectNodeContents(editor);
+    range.collapse(false);
+  }
+  range = normalizeCollapsedRangeForTemplateVariable(range, editor);
+  sel.removeAllRanges();
+  sel.addRange(range);
+  const inserted = document.execCommand("insertHTML", false, html);
+  if (inserted) return;
+  insertWelcomeNodesAtCaret(editor, fallbackNodes);
 }
 
 type TextAreaInsertAnchor = { start: number; end: number; valueLen: number };
@@ -1301,12 +1382,12 @@ function resolveWelcomePreviewInsertRange(editor: HTMLElement, saved: Range | nu
     editor.contains(sel.anchorNode) &&
     document.activeElement === editor
   ) {
-    return sel.getRangeAt(0).cloneRange();
+    return normalizeCollapsedRangeForTemplateVariable(sel.getRangeAt(0).cloneRange(), editor);
   }
   if (saved) {
     try {
       if (editor.contains(saved.commonAncestorContainer)) {
-        return saved.cloneRange();
+        return normalizeCollapsedRangeForTemplateVariable(saved.cloneRange(), editor);
       }
     } catch {
       /* stale */
@@ -1315,7 +1396,13 @@ function resolveWelcomePreviewInsertRange(editor: HTMLElement, saved: Range | nu
   const r = document.createRange();
   r.selectNodeContents(editor);
   r.collapse(false);
-  return r;
+  return normalizeCollapsedRangeForTemplateVariable(r, editor);
+}
+
+function autoGrowTextarea(el: HTMLTextAreaElement | null): void {
+  if (!el) return;
+  el.style.height = "0px";
+  el.style.height = `${el.scrollHeight}px`;
 }
 
 function rolePreviewPillStyle(color: number | undefined): CSSProperties {
@@ -1680,12 +1767,17 @@ export function DashboardGuildPageClient({
   const [welcomeDeliveryMode, setWelcomeDeliveryMode] =
     useState<WelcomeDeliveryMode>("channel");
   const [welcomeDmMessage, setWelcomeDmMessage] = useState(DEFAULT_WELCOME_MESSAGE);
+  const [welcomeDmImageDataUrl, setWelcomeDmImageDataUrl] = useState("");
+  const [welcomeDmImageFilename, setWelcomeDmImageFilename] = useState("");
   const [welcomeDmChannelId, setWelcomeDmChannelId] = useState("");
   const [welcomeDmChannelMessage, setWelcomeDmChannelMessage] =
     useState(DEFAULT_WELCOME_MESSAGE);
   const welcomeDmPickerAreaRef = useRef<HTMLDivElement | null>(null);
   const welcomeDmTextareaRef = useRef<HTMLTextAreaElement | null>(null);
   const dmPreviewEditorRef = useRef<HTMLDivElement | null>(null);
+  const welcomeDmImageInputRef = useRef<HTMLInputElement | null>(null);
+  const welcomeDmImageDragDepthRef = useRef(0);
+  const [welcomeDmImageZoneActive, setWelcomeDmImageZoneActive] = useState(false);
   const welcomeDmRichComposeRef = useRef(false);
   const dmRawInsertCaretRef = useRef<TextAreaInsertAnchor | null>(null);
   const dmPreviewInsertRangeRef = useRef<Range | null>(null);
@@ -1831,50 +1923,6 @@ export function DashboardGuildPageClient({
     }, WELCOME_HISTORY_DEBOUNCE_MS);
   }, [captureWelcomeHistorySnapshot, welcomeHistoryCommitIfChanged]);
 
-  const applyWelcomeHistorySnapshot = useCallback((entry: WelcomeEditorHistoryEntry) => {
-    welcomeHistoryApplyingRef.current = true;
-    if (welcomeHistoryFlushTimerRef.current !== null) {
-      window.clearTimeout(welcomeHistoryFlushTimerRef.current);
-      welcomeHistoryFlushTimerRef.current = null;
-    }
-    const c = Math.min(entry.caret, entry.message.length);
-    if (entry.editorMode === "preview") {
-      pendingWelcomeCaretRef.current = c;
-      pendingRawCaretRef.current = null;
-    } else {
-      pendingRawCaretRef.current = c;
-      pendingWelcomeCaretRef.current = null;
-    }
-    setMessage(entry.message);
-    setMessageEditorMode(entry.editorMode);
-    if (entry.editorMode === "preview") {
-      setPreviewEditorSyncSeq((n) => n + 1);
-    }
-    window.queueMicrotask(() => {
-      welcomeHistoryApplyingRef.current = false;
-    });
-  }, []);
-
-  const welcomeUndo = useCallback(() => {
-    if (messageEditorModeRef.current !== "preview" || welcomeRichComposeRef.current) return;
-    flushWelcomeHistoryDebouncedNow();
-    const { entries, index } = welcomeHistRef.current;
-    if (index <= 0) return;
-    welcomeHistRef.current.index = index - 1;
-    const i = welcomeHistRef.current.index;
-    applyWelcomeHistorySnapshot(entries[i]);
-  }, [applyWelcomeHistorySnapshot, flushWelcomeHistoryDebouncedNow]);
-
-  const welcomeRedo = useCallback(() => {
-    if (messageEditorModeRef.current !== "preview" || welcomeRichComposeRef.current) return;
-    flushWelcomeHistoryDebouncedNow();
-    const { entries, index } = welcomeHistRef.current;
-    if (index >= entries.length - 1) return;
-    welcomeHistRef.current.index = index + 1;
-    const i = welcomeHistRef.current.index;
-    applyWelcomeHistorySnapshot(entries[i]);
-  }, [applyWelcomeHistorySnapshot, flushWelcomeHistoryDebouncedNow]);
-
   const captureWelcomeInsertAnchor = useCallback(() => {
     if (messageEditorMode === "raw") {
       previewInsertRangeRef.current = null;
@@ -2002,10 +2050,15 @@ export function DashboardGuildPageClient({
         const data = (await res.json()) as Partial<DashboardConfig> & Record<string, unknown>;
         const welcomeStyleExists = Object.prototype.hasOwnProperty.call(data, "welcomeStyle");
         const textImageDataUrlExists = Object.prototype.hasOwnProperty.call(data, "textImageDataUrl");
+        const welcomeDmImageDataUrlExists = Object.prototype.hasOwnProperty.call(data, "welcomeDmImageDataUrl");
         const imageCardExists = Object.prototype.hasOwnProperty.call(data, "imageCard");
 
         const welcomeStyleResolved = (data.welcomeStyle ?? "text") as DashboardConfig["welcomeStyle"];
         const textImageDataUrlResolved = (data.textImageDataUrl ?? "") as string;
+        const welcomeDmImageDataUrlResolved =
+          typeof data.welcomeDmImageDataUrl === "string" ? data.welcomeDmImageDataUrl : "";
+        const welcomeDmImageFilenameResolved =
+          typeof data.welcomeDmImageFilename === "string" ? data.welcomeDmImageFilename : "";
 
         const baseMessageResolved = data.message ?? DEFAULT_WELCOME_MESSAGE;
         const baseChannelIdResolved = data.channelId ?? "";
@@ -2034,6 +2087,8 @@ export function DashboardGuildPageClient({
           skipBotAccounts: data.skipBotAccounts ?? true,
           welcomeDeliveryMode: welcomeDeliveryModeResolved,
           welcomeDmMessage: welcomeDmMessageResolved,
+          welcomeDmImageDataUrl: welcomeDmImageDataUrlResolved,
+          welcomeDmImageFilename: welcomeDmImageFilenameResolved,
           welcomeDmAlsoSendToChannel: welcomeDmAlsoSendToChannelResolved,
           welcomeDmChannelId: welcomeDmChannelIdResolved,
           welcomeDmChannelMessage: welcomeDmChannelMessageResolved,
@@ -2055,6 +2110,7 @@ export function DashboardGuildPageClient({
           }),
           welcomeStyleExists,
           textImageDataUrlExists,
+          welcomeDmImageDataUrlExists,
           imageCardExists,
         };
 
@@ -2065,6 +2121,8 @@ export function DashboardGuildPageClient({
         setSkipBotAccounts(snapshot.skipBotAccounts);
         setWelcomeDeliveryMode(snapshot.welcomeDeliveryMode);
         setWelcomeDmMessage(snapshot.welcomeDmMessage);
+        setWelcomeDmImageDataUrl(snapshot.welcomeDmImageDataUrl);
+        setWelcomeDmImageFilename(snapshot.welcomeDmImageFilename);
         setWelcomeDmChannelId(snapshot.welcomeDmChannelId);
         setWelcomeDmChannelMessage(snapshot.welcomeDmChannelMessage);
         setWelcomeStyle(snapshot.welcomeStyle);
@@ -2536,6 +2594,23 @@ export function DashboardGuildPageClient({
   );
 
   const previewDateStr = useMemo(() => new Date().toLocaleDateString(), []);
+  const previewTemplateValues = useMemo(
+    () => previewTemplateDisplayValues(bootstrap?.viewer?.name ?? null),
+    [bootstrap?.viewer?.name]
+  );
+  const isChannelComposerVisible = welcomeDeliveryMode === "channel" || welcomeDeliveryMode === "both";
+  const isDmComposerVisible = welcomeDeliveryMode === "dm" || welcomeDeliveryMode === "both";
+  const welcomeRichVisualKey = useMemo(
+    () =>
+      [
+        resources.channels.length,
+        resources.roles.length,
+        resources.emojis.length,
+        previewTemplateValues.userAt,
+        previewTemplateValues.username,
+      ].join("|"),
+    [resources.channels.length, resources.roles.length, resources.emojis.length, previewTemplateValues]
+  );
   const welcomeRichCtx = useMemo<WelcomeRichDomContext>(
     () => ({
       channelById: new Map(resources.channels.map((c) => [c.id, c])),
@@ -2544,16 +2619,30 @@ export function DashboardGuildPageClient({
         resources.emojis.filter((e) => e.id).map((e) => [e.id as string, e.animated])
       ),
       previewDateStr,
+      previewUserAt: previewTemplateValues.userAt,
+      previewUsername: previewTemplateValues.username,
+      previewServerLabel: previewTemplateValues.server,
+      previewMemberCount: previewTemplateValues.memberCount,
     }),
-    [resources.channels, resources.roles, resources.emojis, previewDateStr]
+    [resources.channels, resources.roles, resources.emojis, previewDateStr, previewTemplateValues]
   );
+  const previewVisualHydratedKeyRef = useRef<string | null>(null);
+  const dmVisualHydratedKeyRef = useRef<string | null>(null);
 
   useLayoutEffect(() => {
+    if (!isChannelComposerVisible) return;
     if (messageEditorMode !== "preview") return;
     const runFill = () => {
       const el = previewEditorRef.current;
       if (!el) return;
+      const focused = document.activeElement === el;
+      const currentSerialized = serializeWelcomeRichEditorRoot(el);
+      const hasPendingCaret = pendingWelcomeCaretRef.current !== null;
+      const sameVisual = previewVisualHydratedKeyRef.current === welcomeRichVisualKey;
+      if (currentSerialized === message && !hasPendingCaret && sameVisual) return;
+      if (focused && !hasPendingCaret) return;
       fillWelcomeRichEditor(el, message, welcomeRichCtx);
+      previewVisualHydratedKeyRef.current = welcomeRichVisualKey;
       if (pendingWelcomeCaretRef.current !== null) {
         const c = pendingWelcomeCaretRef.current;
         pendingWelcomeCaretRef.current = null;
@@ -2565,32 +2654,41 @@ export function DashboardGuildPageClient({
     // message намеренно не в deps: обычный ввод синхронизирует только React state, DOM остаётся источником истины.
     // activeSection: при возврате в «Приветствие» превью-редактор монтируется заново — нужно восстановить DOM из state.
   }, [
+    isChannelComposerVisible,
     messageEditorMode,
     richEditorBootstrap,
     welcomeRichCtx,
+    welcomeRichVisualKey,
     previewEditorSyncSeq,
     activeSection,
-    welcomeDeliveryMode,
   ]);
 
   useLayoutEffect(() => {
+    if (!isDmComposerVisible) return;
     if (dmMessageEditorMode !== "preview") return;
     const runFill = () => {
       const el = dmPreviewEditorRef.current;
       if (!el) return;
+      const focused = document.activeElement === el;
+      const currentSerialized = serializeWelcomeRichEditorRoot(el);
+      const sameVisual = dmVisualHydratedKeyRef.current === welcomeRichVisualKey;
+      if (currentSerialized === welcomeDmMessage && sameVisual) return;
+      if (focused) return;
       fillWelcomeRichEditor(el, welcomeDmMessage, welcomeRichCtx);
+      dmVisualHydratedKeyRef.current = welcomeRichVisualKey;
     };
     runFill();
     queueMicrotask(runFill);
     // welcomeDmMessage намеренно не в deps: ввод в превью обновляет только React state, DOM — источник истины.
     // richEditorBootstrap: загрузка/сброс конфига; dmPreviewEditorSyncSeq: явный возврат в превью.
   }, [
+    isDmComposerVisible,
     dmMessageEditorMode,
     richEditorBootstrap,
     welcomeRichCtx,
+    welcomeRichVisualKey,
     dmPreviewEditorSyncSeq,
     activeSection,
-    welcomeDeliveryMode,
   ]);
 
   useEffect(() => {
@@ -2610,6 +2708,18 @@ export function DashboardGuildPageClient({
     ta.setSelectionRange(c, c);
   }, [message, messageEditorMode]);
 
+  useLayoutEffect(() => {
+    if (messageEditorMode === "raw") autoGrowTextarea(textareaRef.current);
+  }, [messageEditorMode, message]);
+
+  useLayoutEffect(() => {
+    if (dmMessageEditorMode === "raw") autoGrowTextarea(welcomeDmTextareaRef.current);
+  }, [dmMessageEditorMode, welcomeDmMessage, isDmComposerVisible]);
+
+  useLayoutEffect(() => {
+    if (welcomeStyle === "embed") autoGrowTextarea(embedDescriptionTextareaRef.current);
+  }, [welcomeStyle, description]);
+
   const handleWelcomeRichInput = () => {
     if (welcomeRichComposeRef.current) return;
     const el = previewEditorRef.current;
@@ -2617,25 +2727,17 @@ export function DashboardGuildPageClient({
     previewInsertRangeRef.current = null;
     previewInsertMessageSnapshotRef.current = null;
     normalizeWelcomeRichDivs(el);
-    const caret = getWelcomePlainCaretOffset(el);
     const next = serializeWelcomeRichEditorRoot(el);
     setMessage(next);
-    setWelcomePlainCaretOffset(el, Math.min(caret, next.length));
     scheduleWelcomeHistoryDebounced();
   };
 
   const handleWelcomeRichPaste = (event: ClipboardEvent<HTMLDivElement>) => {
     event.preventDefault();
     const plain = event.clipboardData.getData("text/plain");
-    const sel = window.getSelection();
-    if (!sel?.rangeCount || !previewEditorRef.current) return;
-    const range = sel.getRangeAt(0);
-    if (!previewEditorRef.current.contains(range.commonAncestorContainer)) return;
-    range.deleteContents();
-    range.insertNode(document.createTextNode(plain));
-    range.collapse(false);
-    sel.removeAllRanges();
-    sel.addRange(range);
+    const editor = previewEditorRef.current;
+    if (!editor) return;
+    insertWelcomeNodesAtCaret(editor, createWelcomeInsertNodesFromPlainText(plain, welcomeRichCtx));
     handleWelcomeRichInput();
     flushWelcomeHistoryDebouncedNow();
   };
@@ -2644,41 +2746,32 @@ export function DashboardGuildPageClient({
     const ed = previewEditorRef.current;
     if (!ed) return;
 
-    /** Физические клавиши (QWERTY): на русской раскладке `event.key` даёт «я»/«н», а не «z»/«y». */
-    if (
-      messageEditorModeRef.current === "preview" &&
-      !welcomeRichComposeRef.current &&
-      !event.nativeEvent.isComposing
-    ) {
-      const mod = event.metaKey || event.ctrlKey;
-      const undo =
-        mod && event.code === "KeyZ" && !event.shiftKey;
-      const redo =
-        (mod && event.code === "KeyZ" && event.shiftKey) ||
-        (event.ctrlKey &&
-          !event.metaKey &&
-          !event.shiftKey &&
-          event.code === "KeyY");
-      if (undo) {
-        event.preventDefault();
-        welcomeUndo();
-        return;
-      }
-      if (redo) {
-        event.preventDefault();
-        welcomeRedo();
-        return;
-      }
-    }
-
     if (event.key === "Backspace" || event.key === "Delete") {
-      const selected = ed.querySelector(`.${WELCOME_TOKEN_SELECTED}`);
-      if (selected) {
-        event.preventDefault();
-        flushWelcomeHistoryDebouncedNow();
-        selected.remove();
-        handleWelcomeRichInput();
-        flushWelcomeHistoryDebouncedNow();
+      const sel = window.getSelection();
+      if (sel && sel.rangeCount > 0) {
+        const range = sel.getRangeAt(0);
+        if (!range.collapsed && ed.contains(range.commonAncestorContainer)) {
+          const tokenSelected =
+            Array.from(ed.querySelectorAll(`[${WELCOME_TOKEN_ATTR}="true"]`)).some((node) =>
+              range.intersectsNode(node)
+            );
+          if (tokenSelected) {
+            event.preventDefault();
+            document.execCommand("delete");
+            flushWelcomeHistoryDebouncedNow();
+            handleWelcomeRichInput();
+            flushWelcomeHistoryDebouncedNow();
+            return;
+          }
+        }
+      }
+      if (
+        tryHandleWelcomeTokenBoundaryDelete(ed, event, () => {
+          flushWelcomeHistoryDebouncedNow();
+          handleWelcomeRichInput();
+          flushWelcomeHistoryDebouncedNow();
+        })
+      ) {
         return;
       }
       if (
@@ -2698,28 +2791,6 @@ export function DashboardGuildPageClient({
     handleWelcomeRichInput();
   };
 
-  const handlePreviewTokenMouseDown = (event: ReactMouseEvent<HTMLDivElement>) => {
-    const ed = previewEditorRef.current;
-    if (!ed) return;
-    const target = event.target as HTMLElement;
-    const token = target.closest(`.${WELCOME_INTERACTIVE_TOKEN}`) as HTMLElement | null;
-    if (token && ed.contains(token)) {
-      event.preventDefault();
-      ed.focus();
-      clearWelcomeTokenSelection(ed);
-      token.classList.add(WELCOME_TOKEN_SELECTED);
-      const sel = window.getSelection();
-      if (sel) {
-        const r = document.createRange();
-        r.selectNodeContents(token);
-        sel.removeAllRanges();
-        sel.addRange(r);
-      }
-      return;
-    }
-    clearWelcomeTokenSelection(ed);
-  };
-
   const handleWelcomeRichCopy = (event: ClipboardEvent<HTMLDivElement>) => {
     const ed = previewEditorRef.current;
     if (!ed) return;
@@ -2735,7 +2806,7 @@ export function DashboardGuildPageClient({
       const el =
         n?.nodeType === Node.TEXT_NODE ? (n.parentElement as HTMLElement | null) : (n as HTMLElement | null);
       return (
-        el?.closest(`.${WELCOME_INTERACTIVE_TOKEN}`) ??
+        el?.closest(`[${WELCOME_SRC_ATTR}]`) ??
         el?.closest(`[${WELCOME_TEMPLATE_VARIABLE_ATTR}]`) ??
         null
       );
@@ -2760,6 +2831,67 @@ export function DashboardGuildPageClient({
         event.preventDefault();
       }
     }
+  };
+
+  const handleWelcomeRichCut = (event: ClipboardEvent<HTMLDivElement>) => {
+    const ed = previewEditorRef.current;
+    if (!ed) return;
+    const sel = window.getSelection();
+    if (!sel || sel.rangeCount === 0) return;
+    const range = sel.getRangeAt(0);
+    if (!ed.contains(range.commonAncestorContainer) || range.collapsed) return;
+
+    const a = sel.anchorNode;
+    const f = sel.focusNode;
+    if (!a || !f || !ed.contains(a) || !ed.contains(f)) return;
+    const tokenRoot = (n: Node | null) => {
+      const el =
+        n?.nodeType === Node.TEXT_NODE ? (n.parentElement as HTMLElement | null) : (n as HTMLElement | null);
+      return (
+        el?.closest(`[${WELCOME_SRC_ATTR}]`) ??
+        el?.closest(`[${WELCOME_TEMPLATE_VARIABLE_ATTR}]`) ??
+        null
+      );
+    };
+    const t1 = tokenRoot(a);
+    const t2 = tokenRoot(f);
+    if (t1 && t1 === t2 && ed.contains(t1)) {
+      const src = t1.getAttribute(WELCOME_SRC_ATTR);
+      if (src) {
+        event.clipboardData?.setData("text/plain", src);
+        event.preventDefault();
+        document.execCommand("delete");
+        handleWelcomeRichInput();
+        flushWelcomeHistoryDebouncedNow();
+      }
+      return;
+    }
+
+    const holder = document.createElement("div");
+    holder.appendChild(range.cloneContents());
+    const plain = serializeWelcomeRichEditorRoot(holder);
+    if (plain.length > 0) {
+      event.clipboardData?.setData("text/plain", plain);
+      event.preventDefault();
+      document.execCommand("delete");
+      handleWelcomeRichInput();
+      flushWelcomeHistoryDebouncedNow();
+    }
+  };
+
+  const handleWelcomeRichDoubleClick = (event: ReactMouseEvent<HTMLDivElement>) => {
+    const ed = previewEditorRef.current;
+    if (!ed) return;
+    const target = event.target as Node | null;
+    const token = findWelcomeTokenSpan(target, ed);
+    if (!token || token.getAttribute("data-token-type") !== "emoji") return;
+    event.preventDefault();
+    const sel = window.getSelection();
+    if (!sel) return;
+    const r = document.createRange();
+    r.selectNode(token);
+    sel.removeAllRanges();
+    sel.addRange(r);
   };
 
   const captureDmInsertAnchor = () => {
@@ -2800,24 +2932,16 @@ export function DashboardGuildPageClient({
     dmPreviewInsertRangeRef.current = null;
     dmPreviewInsertMessageSnapshotRef.current = null;
     normalizeWelcomeRichDivs(el);
-    const caret = getWelcomePlainCaretOffset(el);
     const next = serializeWelcomeRichEditorRoot(el);
     setWelcomeDmMessage(next);
-    setWelcomePlainCaretOffset(el, Math.min(caret, next.length));
   };
 
   const handleDmRichPaste = (event: ClipboardEvent<HTMLDivElement>) => {
     event.preventDefault();
     const plain = event.clipboardData.getData("text/plain");
-    const sel = window.getSelection();
-    if (!sel?.rangeCount || !dmPreviewEditorRef.current) return;
-    const range = sel.getRangeAt(0);
-    if (!dmPreviewEditorRef.current.contains(range.commonAncestorContainer)) return;
-    range.deleteContents();
-    range.insertNode(document.createTextNode(plain));
-    range.collapse(false);
-    sel.removeAllRanges();
-    sel.addRange(range);
+    const editor = dmPreviewEditorRef.current;
+    if (!editor) return;
+    insertWelcomeNodesAtCaret(editor, createWelcomeInsertNodesFromPlainText(plain, welcomeRichCtx));
     handleDmRichInput();
   };
 
@@ -2825,11 +2949,27 @@ export function DashboardGuildPageClient({
     const ed = dmPreviewEditorRef.current;
     if (!ed) return;
     if (event.key === "Backspace" || event.key === "Delete") {
-      const selected = ed.querySelector(`.${WELCOME_TOKEN_SELECTED}`);
-      if (selected) {
-        event.preventDefault();
-        selected.remove();
-        handleDmRichInput();
+      const sel = window.getSelection();
+      if (sel && sel.rangeCount > 0) {
+        const range = sel.getRangeAt(0);
+        if (!range.collapsed && ed.contains(range.commonAncestorContainer)) {
+          const tokenSelected =
+            Array.from(ed.querySelectorAll(`[${WELCOME_TOKEN_ATTR}="true"]`)).some((node) =>
+              range.intersectsNode(node)
+            );
+          if (tokenSelected) {
+            event.preventDefault();
+            document.execCommand("delete");
+            handleDmRichInput();
+            return;
+          }
+        }
+      }
+      if (
+        tryHandleWelcomeTokenBoundaryDelete(ed, event, () => {
+          handleDmRichInput();
+        })
+      ) {
         return;
       }
       if (
@@ -2844,28 +2984,6 @@ export function DashboardGuildPageClient({
     event.preventDefault();
     insertWelcomeNodesAtCaret(ed, [document.createElement("br")]);
     handleDmRichInput();
-  };
-
-  const handleDmPreviewTokenMouseDown = (event: ReactMouseEvent<HTMLDivElement>) => {
-    const ed = dmPreviewEditorRef.current;
-    if (!ed) return;
-    const target = event.target as HTMLElement;
-    const token = target.closest(`.${WELCOME_INTERACTIVE_TOKEN}`) as HTMLElement | null;
-    if (token && ed.contains(token)) {
-      event.preventDefault();
-      ed.focus();
-      clearWelcomeTokenSelection(ed);
-      token.classList.add(WELCOME_TOKEN_SELECTED);
-      const sel = window.getSelection();
-      if (sel) {
-        const r = document.createRange();
-        r.selectNodeContents(token);
-        sel.removeAllRanges();
-        sel.addRange(r);
-      }
-      return;
-    }
-    clearWelcomeTokenSelection(ed);
   };
 
   const handleDmRichCopy = (event: ClipboardEvent<HTMLDivElement>) => {
@@ -2883,7 +3001,7 @@ export function DashboardGuildPageClient({
       const el =
         n?.nodeType === Node.TEXT_NODE ? (n.parentElement as HTMLElement | null) : (n as HTMLElement | null);
       return (
-        el?.closest(`.${WELCOME_INTERACTIVE_TOKEN}`) ??
+        el?.closest(`[${WELCOME_SRC_ATTR}]`) ??
         el?.closest(`[${WELCOME_TEMPLATE_VARIABLE_ATTR}]`) ??
         null
       );
@@ -2908,6 +3026,65 @@ export function DashboardGuildPageClient({
         event.preventDefault();
       }
     }
+  };
+
+  const handleDmRichCut = (event: ClipboardEvent<HTMLDivElement>) => {
+    const ed = dmPreviewEditorRef.current;
+    if (!ed) return;
+    const sel = window.getSelection();
+    if (!sel || sel.rangeCount === 0) return;
+    const range = sel.getRangeAt(0);
+    if (!ed.contains(range.commonAncestorContainer) || range.collapsed) return;
+
+    const a = sel.anchorNode;
+    const f = sel.focusNode;
+    if (!a || !f || !ed.contains(a) || !ed.contains(f)) return;
+    const tokenRoot = (n: Node | null) => {
+      const el =
+        n?.nodeType === Node.TEXT_NODE ? (n.parentElement as HTMLElement | null) : (n as HTMLElement | null);
+      return (
+        el?.closest(`.${WELCOME_INTERACTIVE_TOKEN}`) ??
+        el?.closest(`[${WELCOME_TEMPLATE_VARIABLE_ATTR}]`) ??
+        null
+      );
+    };
+    const t1 = tokenRoot(a);
+    const t2 = tokenRoot(f);
+    if (t1 && t1 === t2 && ed.contains(t1)) {
+      const src = t1.getAttribute(WELCOME_SRC_ATTR);
+      if (src) {
+        event.clipboardData?.setData("text/plain", src);
+        event.preventDefault();
+        document.execCommand("delete");
+        handleDmRichInput();
+      }
+      return;
+    }
+
+    const holder = document.createElement("div");
+    holder.appendChild(range.cloneContents());
+    const plain = serializeWelcomeRichEditorRoot(holder);
+    if (plain.length > 0) {
+      event.clipboardData?.setData("text/plain", plain);
+      event.preventDefault();
+      document.execCommand("delete");
+      handleDmRichInput();
+    }
+  };
+
+  const handleDmRichDoubleClick = (event: ReactMouseEvent<HTMLDivElement>) => {
+    const ed = dmPreviewEditorRef.current;
+    if (!ed) return;
+    const target = event.target as Node | null;
+    const token = findWelcomeTokenSpan(target, ed);
+    if (!token || token.getAttribute("data-token-type") !== "emoji") return;
+    event.preventDefault();
+    const sel = window.getSelection();
+    if (!sel) return;
+    const r = document.createRange();
+    r.selectNode(token);
+    sel.removeAllRanges();
+    sel.addRange(r);
   };
 
   const handlePick = (item: PickerItem) => {
@@ -2980,14 +3157,12 @@ export function DashboardGuildPageClient({
           sel.removeAllRanges();
           sel.addRange(range);
         }
-        const caretBefore = getWelcomePlainCaretOffset(editor);
-        const node = createWelcomeInsertNode(insert, welcomeRichCtx);
-        insertWelcomeNodesAtCaret(editor, [node]);
+        const nodes = createWelcomeInsertNodesFromPlainText(insert, welcomeRichCtx);
+        const html = createWelcomeInsertHtml(insert, welcomeRichCtx);
+        insertWelcomeHtmlAtCaret(editor, html, nodes);
         normalizeWelcomeRichDivs(editor);
         const next = serializeWelcomeRichEditorRoot(editor);
-        const nextCaret = Math.min(caretBefore + insert.length, next.length);
         setWelcomeDmMessage(next);
-        setWelcomePlainCaretOffset(editor, nextCaret);
         dmPreviewInsertRangeRef.current = null;
         dmPreviewInsertMessageSnapshotRef.current = null;
         dmRawInsertCaretRef.current = null;
@@ -3040,17 +3215,15 @@ export function DashboardGuildPageClient({
         sel.removeAllRanges();
         sel.addRange(range);
       }
-      const caretBefore = getWelcomePlainCaretOffset(editor);
-      const node = createWelcomeInsertNode(insert, welcomeRichCtx);
-      insertWelcomeNodesAtCaret(editor, [node]);
+      const nodes = createWelcomeInsertNodesFromPlainText(insert, welcomeRichCtx);
+      const html = createWelcomeInsertHtml(insert, welcomeRichCtx);
+      insertWelcomeHtmlAtCaret(editor, html, nodes);
       normalizeWelcomeRichDivs(editor);
       const next = serializeWelcomeRichEditorRoot(editor);
-      const nextCaret = Math.min(caretBefore + insert.length, next.length);
       setMessage(next);
-      setWelcomePlainCaretOffset(editor, nextCaret);
       welcomeHistoryCommitIfChanged({
         message: next,
-        caret: nextCaret,
+        caret: getWelcomePlainCaretOffset(editor),
         editorMode: "preview",
       });
       previewInsertRangeRef.current = null;
@@ -3096,6 +3269,8 @@ export function DashboardGuildPageClient({
       skipBotAccounts,
       welcomeDeliveryMode,
       welcomeDmMessage,
+      welcomeDmImageDataUrl,
+      welcomeDmImageFilename,
       welcomeDmAlsoSendToChannel: welcomeDeliveryMode === "both",
       welcomeDmChannelId,
       welcomeDmChannelMessage,
@@ -3117,6 +3292,7 @@ export function DashboardGuildPageClient({
       // Для сравнения "dirty" используются флаги из lastSavedConfig.
       welcomeStyleExists: true,
       textImageDataUrlExists: true,
+      welcomeDmImageDataUrlExists: true,
       imageCardExists: true,
     }),
     [
@@ -3127,6 +3303,8 @@ export function DashboardGuildPageClient({
       skipBotAccounts,
       welcomeDeliveryMode,
       welcomeDmMessage,
+      welcomeDmImageDataUrl,
+      welcomeDmImageFilename,
       welcomeDmChannelId,
       welcomeDmChannelMessage,
       message,
@@ -3140,6 +3318,7 @@ export function DashboardGuildPageClient({
       embedFields,
       welcomeStyle,
       textImageDataUrl,
+      welcomeDmImageDataUrl,
       imageCard,
       bootstrap?.viewer?.avatarUrl,
     ]
@@ -3303,7 +3482,7 @@ export function DashboardGuildPageClient({
     try {
       const payload: Record<string, unknown> = {
         welcomeDeliveryMode,
-        ...(needDm ? { welcomeDmMessage } : {}),
+        ...(needDm ? { welcomeDmMessage, welcomeDmImageDataUrl } : {}),
         ...(needChannel
           ? {
               channelId: channelId.trim(),
@@ -3313,6 +3492,7 @@ export function DashboardGuildPageClient({
               description,
               color,
               textImageDataUrl,
+              welcomeDmImageDataUrl,
               embedAuthorName,
               embedAuthorAvatar,
               embedFooter,
@@ -3379,6 +3559,8 @@ export function DashboardGuildPageClient({
     setSkipBotAccounts(lastSavedConfig.skipBotAccounts);
     setWelcomeDeliveryMode(lastSavedConfig.welcomeDeliveryMode);
     setWelcomeDmMessage(lastSavedConfig.welcomeDmMessage);
+    setWelcomeDmImageDataUrl(lastSavedConfig.welcomeDmImageDataUrl);
+    setWelcomeDmImageFilename(lastSavedConfig.welcomeDmImageFilename);
     setWelcomeDmChannelId(lastSavedConfig.welcomeDmChannelId);
     setWelcomeDmChannelMessage(lastSavedConfig.welcomeDmChannelMessage);
     setWelcomeStyle(lastSavedConfig.welcomeStyle);
@@ -3417,6 +3599,8 @@ export function DashboardGuildPageClient({
       skipBotAccounts,
       welcomeDeliveryMode,
       welcomeDmMessage,
+      welcomeDmImageDataUrl,
+      welcomeDmImageFilename,
       welcomeDmAlsoSendToChannel: welcomeDeliveryMode === "both",
       welcomeDmChannelId,
       welcomeDmChannelMessage,
@@ -3446,6 +3630,7 @@ export function DashboardGuildPageClient({
           ...currentConfig,
           welcomeStyleExists: true,
           textImageDataUrlExists: true,
+          welcomeDmImageDataUrlExists: true,
           imageCardExists: true,
         };
         setLastSavedConfig(savedSnapshot);
@@ -3464,6 +3649,19 @@ export function DashboardGuildPageClient({
       const result = reader.result;
       if (typeof result === "string") {
         setTextImageDataUrl(result);
+      }
+    };
+    reader.readAsDataURL(file);
+  };
+
+  const processDmImageFile = (file: File | null | undefined) => {
+    if (!file || !file.type.startsWith("image/")) return;
+    const reader = new FileReader();
+    reader.onload = () => {
+      const result = reader.result;
+      if (typeof result === "string") {
+        setWelcomeDmImageDataUrl(result);
+        setWelcomeDmImageFilename(file.name || "");
       }
     };
     reader.readAsDataURL(file);
@@ -3499,6 +3697,44 @@ export function DashboardGuildPageClient({
   };
 
   const onWelcomeTextImageDragOver = (e: DragEvent<HTMLElement>) => {
+    e.preventDefault();
+    try {
+      e.dataTransfer.dropEffect = "copy";
+    } catch {
+      /* ignore */
+    }
+  };
+
+  const handleDmImageInput = (event: ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    processDmImageFile(file);
+    event.target.value = "";
+  };
+
+  const handleDmImageDrop = (event: DragEvent<HTMLElement>) => {
+    event.preventDefault();
+    welcomeDmImageDragDepthRef.current = 0;
+    setWelcomeDmImageZoneActive(false);
+    processDmImageFile(event.dataTransfer.files?.[0]);
+  };
+
+  const onWelcomeDmImageDragEnter = (e: DragEvent<HTMLElement>) => {
+    e.preventDefault();
+    if (!Array.from(e.dataTransfer.types).includes("Files")) return;
+    welcomeDmImageDragDepthRef.current += 1;
+    setWelcomeDmImageZoneActive(true);
+  };
+
+  const onWelcomeDmImageDragLeave = (e: DragEvent<HTMLElement>) => {
+    e.preventDefault();
+    welcomeDmImageDragDepthRef.current -= 1;
+    if (welcomeDmImageDragDepthRef.current <= 0) {
+      welcomeDmImageDragDepthRef.current = 0;
+      setWelcomeDmImageZoneActive(false);
+    }
+  };
+
+  const onWelcomeDmImageDragOver = (e: DragEvent<HTMLElement>) => {
     e.preventDefault();
     try {
       e.dataTransfer.dropEffect = "copy";
@@ -3820,6 +4056,13 @@ export function DashboardGuildPageClient({
                           />
                         </div>
                         <div className="relative min-h-28 px-3 pb-3 sm:px-3.5 sm:pb-3.5">
+                          <input
+                            ref={textImageInputRef}
+                            type="file"
+                            accept="image/*"
+                            onChange={handleTextImageInput}
+                            className="hidden"
+                          />
                           {messageEditorMode === "raw" ? (
                             <textarea
                               ref={textareaRef}
@@ -3830,7 +4073,7 @@ export function DashboardGuildPageClient({
                                 scheduleWelcomeHistoryDebounced();
                               }}
                               onBlur={() => flushWelcomeHistoryDebouncedNow()}
-                              className="min-h-28 w-full resize-y rounded-none border-0 bg-transparent px-0.5 py-2 pb-12 text-[15px] leading-relaxed text-zinc-200 shadow-none outline-none focus-visible:ring-0 focus-visible:ring-offset-0"
+                              className="min-h-28 w-full resize-none overflow-hidden rounded-none border-0 bg-transparent px-0.5 py-2 pb-12 text-[15px] leading-relaxed text-zinc-200 shadow-none outline-none focus-visible:ring-0 focus-visible:ring-offset-0"
                               aria-labelledby="welcome-message-label"
                               spellCheck={false}
                             />
@@ -3844,8 +4087,9 @@ export function DashboardGuildPageClient({
                               suppressContentEditableWarning
                               spellCheck={false}
                               className="min-h-28 w-full whitespace-pre-wrap break-words px-0.5 py-2 pb-12 text-[15px] leading-relaxed text-zinc-200 outline-none [&_.welcome-interactive-token]:select-all"
-                              onMouseDown={handlePreviewTokenMouseDown}
                               onCopy={handleWelcomeRichCopy}
+                              onCut={handleWelcomeRichCut}
+                              onDoubleClick={handleWelcomeRichDoubleClick}
                               onInput={handleWelcomeRichInput}
                               onCompositionStart={() => {
                                 welcomeRichComposeRef.current = true;
@@ -3856,12 +4100,27 @@ export function DashboardGuildPageClient({
                               }}
                               onPaste={handleWelcomeRichPaste}
                               onKeyDown={handleWelcomeRichKeyDown}
-                              onBlur={() => flushWelcomeHistoryDebouncedNow()}
+                              onBlur={() => {
+                                flushWelcomeHistoryDebouncedNow();
+                                setPreviewEditorSyncSeq((n) => n + 1);
+                              }}
                             />
                           )}
-                          <div className="pointer-events-none absolute bottom-3.5 right-3.5 z-10 flex justify-end">
+                          <div className="pointer-events-none absolute bottom-3.5 right-3.5 z-10 flex items-center justify-end gap-1.5">
+                            {welcomeStyle === "text" ? (
+                              <button
+                                type="button"
+                                aria-label={textImageDataUrl ? "Заменить изображение сообщения" : "Добавить изображение к сообщению"}
+                                title={textImageDataUrl ? "Заменить изображение сообщения" : "Добавить изображение к сообщению"}
+                                onMouseDown={(e) => e.preventDefault()}
+                                onClick={() => textImageInputRef.current?.click()}
+                                className="pointer-events-auto inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-white/[0.09] bg-zinc-950/42 text-zinc-300 shadow-[0_8px_32px_rgba(0,0,0,0.4),0_2px_12px_rgba(0,0,0,0.2)] backdrop-blur-2xl backdrop-saturate-150 transition hover:bg-zinc-900/55 hover:text-zinc-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)] focus-visible:ring-offset-2 focus-visible:ring-offset-[rgba(9,9,15,0.96)]"
+                              >
+                                <IconWelcomeImagePlaceholder className="h-4 w-4" />
+                              </button>
+                            ) : null}
                             <div
-                              className="pointer-events-auto flex items-center gap-0.5 rounded-full border border-white/[0.09] bg-zinc-950/40 px-1.5 py-1.5 shadow-[0_8px_32px_rgba(0,0,0,0.4),0_2px_12px_rgba(0,0,0,0.2)] backdrop-blur-2xl backdrop-saturate-150"
+                              className="pointer-events-auto flex h-9 items-center gap-0.5 rounded-full border border-white/[0.09] bg-zinc-950/42 px-1.5 py-1.5 shadow-[0_8px_32px_rgba(0,0,0,0.4),0_2px_12px_rgba(0,0,0,0.2)] backdrop-blur-2xl backdrop-saturate-150"
                               role="toolbar"
                               aria-label="Вставка в сообщение"
                             >
@@ -3895,6 +4154,38 @@ export function DashboardGuildPageClient({
                             </div>
                           </div>
                         </div>
+                        {welcomeStyle === "text" && textImageDataUrl ? (
+                          <div className="px-3 pb-3 sm:px-3.5 sm:pb-3.5">
+                            <div
+                              className={`group relative mt-1 aspect-[16/10] w-full overflow-hidden rounded-xl bg-black/[0.16] shadow-[inset_0_1px_0_rgba(255,255,255,0.04)] ring-1 ring-white/[0.06] transition ${
+                                textImageZoneActive ? "ring-2 ring-white/[0.14] ring-inset" : ""
+                              }`}
+                              onDragEnter={onWelcomeTextImageDragEnter}
+                              onDragLeave={onWelcomeTextImageDragLeave}
+                              onDragOver={onWelcomeTextImageDragOver}
+                              onDrop={handleTextImageDrop}
+                            >
+                              <div className="relative flex h-full w-full cursor-default items-center justify-center p-2 sm:p-3">
+                                <img
+                                  src={textImageDataUrl}
+                                  alt="Превью изображения для приветствия"
+                                  className="max-h-full w-full max-w-full object-contain drop-shadow-sm"
+                                />
+                              </div>
+                              <div className="pointer-events-none absolute left-2.5 top-2.5 flex justify-start">
+                                <button
+                                  type="button"
+                                  aria-label="Удалить изображение"
+                                  title="Удалить изображение"
+                                  onClick={() => setTextImageDataUrl("")}
+                                  className="pointer-events-auto inline-flex size-8 shrink-0 items-center justify-center rounded-full border border-white/[0.09] bg-zinc-950/52 text-zinc-300 shadow-[0_8px_32px_rgba(0,0,0,0.35),0_2px_12px_rgba(0,0,0,0.2)] backdrop-blur-2xl backdrop-saturate-150 transition hover:bg-zinc-900/65 hover:text-zinc-100"
+                                >
+                                  <IconTrashCompact className="h-4 w-4" />
+                                </button>
+                              </div>
+                            </div>
+                          </div>
+                        ) : null}
                       </div>
 
                       <div className="border-t border-white/[0.05] bg-white/[0.015] px-3 py-3 sm:px-3.5 sm:py-3.5">
@@ -3919,79 +4210,11 @@ export function DashboardGuildPageClient({
                       </div>
 
                       <div
-                        className="mt-3.5 rounded-xl bg-black/[0.18] px-3 py-3 shadow-[inset_0_1px_0_rgba(255,255,255,0.04)] ring-1 ring-white/[0.045] sm:px-3.5 sm:py-3.5"
+                        className="mt-3.5"
                         role="region"
                         aria-label={`Параметры: ${WELCOME_STYLE_LABELS[welcomeStyle]}`}
                       >
                         <div className="space-y-3.5">
-                    {welcomeStyle === "text" ? (
-                      <div>
-                        <p className="ds-kicker">Изображение к сообщению (опционально)</p>
-                        <input
-                          ref={textImageInputRef}
-                          type="file"
-                          accept="image/*"
-                          onChange={handleTextImageInput}
-                          className="hidden"
-                        />
-                        {!textImageDataUrl ? (
-                          <button
-                            type="button"
-                            onClick={() => textImageInputRef.current?.click()}
-                            onDragEnter={onWelcomeTextImageDragEnter}
-                            onDragLeave={onWelcomeTextImageDragLeave}
-                            onDragOver={onWelcomeTextImageDragOver}
-                            onDrop={handleTextImageDrop}
-                            className={`relative mt-2.5 flex aspect-video w-full max-h-[148px] min-h-[6.5rem] flex-col items-center justify-center overflow-hidden rounded-xl px-4 py-3 text-center transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)] focus-visible:ring-offset-2 focus-visible:ring-offset-[rgba(9,9,15,0.96)] ${
-                              textImageZoneActive
-                                ? "bg-black/[0.2] shadow-[inset_0_1px_0_rgba(255,255,255,0.05)] ring-2 ring-white/[0.14] ring-inset"
-                                : "bg-black/[0.14] shadow-[inset_0_1px_0_rgba(255,255,255,0.04)] ring-1 ring-white/[0.06] hover:bg-black/[0.17]"
-                            }`}
-                          >
-                            <div className="relative flex flex-col items-center">
-                              <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-white/[0.05] ring-1 ring-white/[0.07]">
-                                <IconWelcomeImagePlaceholder className="h-5 w-5 text-zinc-400/90" />
-                              </div>
-                              <p className="welcome-help-text mt-2 max-w-[16rem] text-center">
-                                Перетащите или нажмите для выбора
-                              </p>
-                            </div>
-                          </button>
-                        ) : (
-                          <div
-                            className={`group relative mt-2.5 aspect-video w-full max-h-[148px] min-h-[6.5rem] overflow-hidden rounded-xl bg-black/[0.16] shadow-[inset_0_1px_0_rgba(255,255,255,0.04)] ring-1 ring-white/[0.06] transition ${
-                              textImageZoneActive ? "ring-2 ring-white/[0.14] ring-inset" : ""
-                            }`}
-                            onDragEnter={onWelcomeTextImageDragEnter}
-                            onDragLeave={onWelcomeTextImageDragLeave}
-                            onDragOver={onWelcomeTextImageDragOver}
-                            onDrop={handleTextImageDrop}
-                          >
-                            <div className="relative flex h-full min-h-[6.5rem] w-full cursor-default items-center justify-center p-2 sm:p-3">
-                              <img
-                                src={textImageDataUrl}
-                                alt="Превью изображения для приветствия"
-                                className="max-h-full w-full max-w-full object-contain drop-shadow-sm"
-                              />
-                            </div>
-                            <div className="pointer-events-none absolute inset-0 flex items-end justify-end p-2.5 sm:p-3">
-                              <div className="pointer-events-auto flex items-center gap-0.5 rounded-full border border-white/[0.09] bg-zinc-950/40 px-1.5 py-1.5 shadow-[0_8px_32px_rgba(0,0,0,0.4),0_2px_12px_rgba(0,0,0,0.2)] backdrop-blur-2xl backdrop-saturate-150 transition">
-                                <button
-                                  type="button"
-                                  aria-label="Удалить изображение"
-                                  title="Удалить изображение"
-                                  onClick={() => setTextImageDataUrl("")}
-                                  className="inline-flex size-8 shrink-0 items-center justify-center rounded-full text-zinc-400 transition hover:bg-white/[0.12] hover:text-zinc-100"
-                                >
-                                  <IconTrashCompact className="h-4 w-4" />
-                                </button>
-                              </div>
-                            </div>
-                          </div>
-                        )}
-                      </div>
-                    ) : null}
-
                     {welcomeStyle === "embed" ? (
                       <div
                         ref={embedPickerAreaRef}
@@ -4101,7 +4324,7 @@ export function DashboardGuildPageClient({
                                   onSelect={captureEmbedDescriptionInsertAnchor}
                                   onKeyUp={captureEmbedDescriptionInsertAnchor}
                                   onMouseUp={captureEmbedDescriptionInsertAnchor}
-                                  className="min-h-[9.5rem] w-full resize-y rounded-lg border-0 bg-transparent px-2.5 py-2 pb-11 text-[14px] leading-[1.55] text-[#dcddde] shadow-none outline-none placeholder:text-[#6d7480] focus-visible:ring-0"
+                                  className="min-h-[9.5rem] w-full resize-none overflow-hidden rounded-lg border-0 bg-transparent px-2.5 py-2 pb-11 text-[14px] leading-[1.55] text-[#dcddde] shadow-none outline-none placeholder:text-[#6d7480] focus-visible:ring-0"
                                   placeholder="Основной текст встраиваемого сообщения…"
                                   spellCheck={false}
                                 />
@@ -5060,6 +5283,13 @@ export function DashboardGuildPageClient({
                           />
                         </div>
                         <div className="relative min-h-28 px-3 pb-3 sm:px-3.5 sm:pb-3.5">
+                          <input
+                            ref={welcomeDmImageInputRef}
+                            type="file"
+                            accept="image/*"
+                            onChange={handleDmImageInput}
+                            className="hidden"
+                          />
                           {dmMessageEditorMode === "raw" ? (
                             <textarea
                               ref={welcomeDmTextareaRef}
@@ -5068,7 +5298,7 @@ export function DashboardGuildPageClient({
                                 dmRawInsertCaretRef.current = null;
                                 setWelcomeDmMessage(e.target.value);
                               }}
-                              className="min-h-28 w-full resize-y rounded-none border-0 bg-transparent px-0.5 py-2 pb-12 text-[15px] leading-relaxed text-zinc-200 shadow-none outline-none focus-visible:ring-0 focus-visible:ring-offset-0"
+                              className="min-h-28 w-full resize-none overflow-hidden rounded-none border-0 bg-transparent px-0.5 py-2 pb-12 text-[15px] leading-relaxed text-zinc-200 shadow-none outline-none focus-visible:ring-0 focus-visible:ring-offset-0"
                               aria-labelledby="welcome-dm-message-label"
                               spellCheck={false}
                             />
@@ -5082,8 +5312,9 @@ export function DashboardGuildPageClient({
                               suppressContentEditableWarning
                               spellCheck={false}
                               className="min-h-28 w-full whitespace-pre-wrap break-words px-0.5 py-2 pb-12 text-[15px] leading-relaxed text-zinc-200 outline-none [&_.welcome-interactive-token]:select-all"
-                              onMouseDown={handleDmPreviewTokenMouseDown}
                               onCopy={handleDmRichCopy}
+                              onCut={handleDmRichCut}
+                              onDoubleClick={handleDmRichDoubleClick}
                               onInput={handleDmRichInput}
                               onCompositionStart={() => {
                                 welcomeDmRichComposeRef.current = true;
@@ -5094,11 +5325,22 @@ export function DashboardGuildPageClient({
                               }}
                               onPaste={handleDmRichPaste}
                               onKeyDown={handleDmRichKeyDown}
+                              onBlur={() => setDmPreviewEditorSyncSeq((n) => n + 1)}
                             />
                           )}
-                          <div className="pointer-events-none absolute bottom-3.5 right-3.5 z-10 flex justify-end">
+                          <div className="pointer-events-none absolute bottom-3.5 right-3.5 z-10 flex items-center justify-end gap-1.5">
+                            <button
+                              type="button"
+                              aria-label={welcomeDmImageDataUrl ? "Заменить изображение для ЛС" : "Добавить изображение для ЛС"}
+                              title={welcomeDmImageDataUrl ? "Заменить изображение для ЛС" : "Добавить изображение для ЛС"}
+                              onMouseDown={(e) => e.preventDefault()}
+                              onClick={() => welcomeDmImageInputRef.current?.click()}
+                              className="pointer-events-auto inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-white/[0.09] bg-zinc-950/42 text-zinc-300 shadow-[0_8px_32px_rgba(0,0,0,0.4),0_2px_12px_rgba(0,0,0,0.2)] backdrop-blur-2xl backdrop-saturate-150 transition hover:bg-zinc-900/55 hover:text-zinc-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)] focus-visible:ring-offset-2 focus-visible:ring-offset-[rgba(9,9,15,0.96)]"
+                            >
+                              <IconWelcomeImagePlaceholder className="h-4 w-4" />
+                            </button>
                             <div
-                              className="pointer-events-auto flex items-center gap-0.5 rounded-full border border-white/[0.09] bg-zinc-950/40 px-1.5 py-1.5 shadow-[0_8px_32px_rgba(0,0,0,0.4),0_2px_12px_rgba(0,0,0,0.2)] backdrop-blur-2xl backdrop-saturate-150"
+                              className="pointer-events-auto flex h-9 items-center gap-0.5 rounded-full border border-white/[0.09] bg-zinc-950/42 px-1.5 py-1.5 shadow-[0_8px_32px_rgba(0,0,0,0.4),0_2px_12px_rgba(0,0,0,0.2)] backdrop-blur-2xl backdrop-saturate-150"
                               role="toolbar"
                               aria-label="Вставка в сообщение"
                             >
@@ -5132,6 +5374,41 @@ export function DashboardGuildPageClient({
                             </div>
                           </div>
                         </div>
+                        {welcomeDmImageDataUrl ? (
+                          <div className="px-3 pb-3 sm:px-3.5 sm:pb-3.5">
+                            <div
+                              className={`group relative mt-1 aspect-[16/10] w-full overflow-hidden rounded-xl bg-black/[0.16] shadow-[inset_0_1px_0_rgba(255,255,255,0.04)] ring-1 ring-white/[0.06] transition ${
+                                welcomeDmImageZoneActive ? "ring-2 ring-white/[0.14] ring-inset" : ""
+                              }`}
+                              onDragEnter={onWelcomeDmImageDragEnter}
+                              onDragLeave={onWelcomeDmImageDragLeave}
+                              onDragOver={onWelcomeDmImageDragOver}
+                              onDrop={handleDmImageDrop}
+                            >
+                              <div className="relative flex h-full w-full cursor-default items-center justify-center p-2 sm:p-3">
+                                <img
+                                  src={welcomeDmImageDataUrl}
+                                  alt="Превью изображения для ЛС-приветствия"
+                                  className="max-h-full w-full max-w-full object-contain drop-shadow-sm"
+                                />
+                              </div>
+                              <div className="pointer-events-none absolute left-2.5 top-2.5 flex justify-start">
+                                <button
+                                  type="button"
+                                  aria-label="Удалить изображение"
+                                  title="Удалить изображение"
+                                  onClick={() => {
+                                    setWelcomeDmImageDataUrl("");
+                                    setWelcomeDmImageFilename("");
+                                  }}
+                                  className="pointer-events-auto inline-flex size-8 shrink-0 items-center justify-center rounded-full border border-white/[0.09] bg-zinc-950/52 text-zinc-300 shadow-[0_8px_32px_rgba(0,0,0,0.35),0_2px_12px_rgba(0,0,0,0.2)] backdrop-blur-2xl backdrop-saturate-150 transition hover:bg-zinc-900/65 hover:text-zinc-100"
+                                >
+                                  <IconTrashCompact className="h-4 w-4" />
+                                </button>
+                              </div>
+                            </div>
+                          </div>
+                        ) : null}
                       </div>
                     </section>
                     ) : null}

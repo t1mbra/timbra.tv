@@ -24,6 +24,8 @@ export function resolveWelcomeCardFontDir(): string {
     candidates.push(path.resolve(String(env).trim()));
   }
   candidates.push(
+    path.resolve(process.cwd(), "assets/fonts/welcome-card"),
+    path.resolve(process.cwd(), "../assets/fonts/welcome-card"),
     path.resolve(process.cwd(), "shared-assets/fonts/welcome-card"),
     path.resolve(process.cwd(), "../shared-assets/fonts/welcome-card"),
     path.join(resolveSharedDataDir(), "fonts", "welcome-card")
@@ -37,7 +39,7 @@ export function resolveWelcomeCardFontDir(): string {
     if (welcomeCardFontDirHasAnyFont(resolved)) return resolved;
   }
 
-  return path.resolve(process.cwd(), "../shared-assets/fonts/welcome-card");
+  return path.resolve(process.cwd(), "assets/fonts/welcome-card");
 }
 
 /** Для превью/API: не показывать в списке шрифт, если нет файла в выбранном каталоге. */

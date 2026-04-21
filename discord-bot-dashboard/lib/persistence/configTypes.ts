@@ -25,6 +25,10 @@ export type GuildConfig = {
   welcomeDeliveryMode?: "channel" | "dm" | "both";
   /** Текст ЛС-приветствия (только текст; плейсхолдеры как у channel message). */
   welcomeDmMessage?: string;
+  /** Картинка в ЛС-сообщение (data: или http(s), аналогично channel textImageDataUrl). */
+  welcomeDmImageDataUrl?: string;
+  /** Оригинальное имя DM-вложения (опционально). */
+  welcomeDmImageFilename?: string;
   /** Дублировать ли отдельным текстом в канал сервера (режим ЛС). */
   welcomeDmAlsoSendToChannel?: boolean;
   /** Канал для дубля в режиме ЛС. Отсутствие → channelId. */
