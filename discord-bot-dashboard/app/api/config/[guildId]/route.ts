@@ -39,6 +39,11 @@ const defaultGuildConfig: GuildConfig = {
   embedImageDataUrl: "",
   embedFields: [],
   imageCard: mergeImageCard(undefined, { availableFontKeys: availableImageCardFontKeys() }),
+  farewellEnabled: false,
+  farewellChannelId: "",
+  farewellMessage: "{username} покинул сервер {server}. Будем скучать 🌙",
+  farewellImageDataUrl: "",
+  farewellImageFilename: "",
 };
 
 function normalizeWelcomeDeliveryMode(
@@ -114,6 +119,19 @@ export async function GET(
     return NextResponse.json({
       ...gc,
       ...mergeDeliveryWithDefaults(gc, baseMessage, baseChannelId),
+      farewellEnabled: gc.farewellEnabled === true,
+      farewellChannelId:
+        typeof gc.farewellChannelId === "string"
+          ? gc.farewellChannelId
+          : defaultGuildConfig.farewellChannelId,
+      farewellMessage:
+        typeof gc.farewellMessage === "string"
+          ? gc.farewellMessage
+          : defaultGuildConfig.farewellMessage,
+      farewellImageDataUrl:
+        typeof gc.farewellImageDataUrl === "string" ? gc.farewellImageDataUrl : "",
+      farewellImageFilename:
+        typeof gc.farewellImageFilename === "string" ? gc.farewellImageFilename : "",
       imageCard: mergeImageCard(
         g && typeof g === "object" && "imageCard" in g
           ? (g as GuildConfig).imageCard
@@ -195,6 +213,26 @@ export async function POST(
               };
             })
         : defaultGuildConfig.embedFields,
+      farewellEnabled:
+        typeof body.farewellEnabled === "boolean"
+          ? body.farewellEnabled
+          : defaultGuildConfig.farewellEnabled,
+      farewellChannelId:
+        typeof body.farewellChannelId === "string"
+          ? body.farewellChannelId
+          : defaultGuildConfig.farewellChannelId,
+      farewellMessage:
+        typeof body.farewellMessage === "string"
+          ? body.farewellMessage
+          : defaultGuildConfig.farewellMessage,
+      farewellImageDataUrl:
+        typeof body.farewellImageDataUrl === "string"
+          ? body.farewellImageDataUrl
+          : defaultGuildConfig.farewellImageDataUrl,
+      farewellImageFilename:
+        typeof body.farewellImageFilename === "string"
+          ? body.farewellImageFilename
+          : defaultGuildConfig.farewellImageFilename,
       imageCard: mergeImageCard(body.imageCard, { availableFontKeys: avail }),
     };
 

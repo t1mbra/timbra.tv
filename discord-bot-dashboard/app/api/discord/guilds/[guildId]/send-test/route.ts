@@ -19,6 +19,7 @@ type DiscordGuild = {
 type WelcomeStyle = "text" | "embed" | "imageCard";
 
 type SendTestBody = {
+  testType?: string;
   /** Тест ЛС: отправить текст текущему пользователю дашборда (OAuth), не в канал. */
   welcomeDeliveryMode?: string;
   welcomeDmMessage?: string;
@@ -52,6 +53,10 @@ type SendTestBody = {
     showAvatar?: boolean;
     showUsername?: boolean;
   };
+  farewellChannelId?: string;
+  farewellMessage?: string;
+  farewellImageDataUrl?: string;
+  farewellImageFilename?: string;
 };
 
 function parseDataUrlImage(raw: string): { mime: string; bytes: Uint8Array } | null {
@@ -80,6 +85,16 @@ function pickAttachmentFilename(preferred: string | undefined, mime: string, fal
 const SNOWFLAKE_RE = /^\d{17,20}$/;
 
 function resolveTestVariables(text: string): string {
+  const dateStr = new Date().toLocaleDateString();
+  return text
+    .replaceAll("{user}", "@TestUser")
+    .replaceAll("{username}", "TestUser")
+    .replaceAll("{server}", "Test Server")
+    .replaceAll("{memberCount}", "999")
+    .replaceAll("{date}", dateStr);
+}
+
+function resolveFarewellTestVariables(text: string): string {
   const dateStr = new Date().toLocaleDateString();
   return text
     .replaceAll("{user}", "@TestUser")
@@ -179,47 +194,6 @@ export async function POST(
     );
   }
 
-  const deliveryRaw =
-    typeof body.welcomeDeliveryMode === "string"
-      ? body.welcomeDeliveryMode.trim().toLowerCase()
-      : "channel";
-  const deliveryMode: "channel" | "dm" | "both" =
-    deliveryRaw === "both" ? "both" : deliveryRaw === "dm" ? "dm" : "channel";
-  const needDm = deliveryMode === "dm" || deliveryMode === "both";
-  const needChannel = deliveryMode === "channel" || deliveryMode === "both";
-
-  let channelId = "";
-  let welcomeStyle: WelcomeStyle | undefined;
-
-  if (needChannel) {
-    channelId = body.channelId?.trim() ?? "";
-    if (!channelId || !SNOWFLAKE_RE.test(channelId)) {
-      return NextResponse.json(
-        {
-          success: false,
-          message: "channelId is required and must be a valid Discord snowflake",
-        },
-        { status: 400 }
-      );
-    }
-
-    welcomeStyle = body.welcomeStyle as WelcomeStyle | undefined;
-    if (
-      welcomeStyle !== "text" &&
-      welcomeStyle !== "embed" &&
-      welcomeStyle !== "imageCard"
-    ) {
-      return NextResponse.json(
-        {
-          success: false,
-          message:
-            'welcomeStyle must be "text", "embed", or "imageCard"',
-        },
-        { status: 400 }
-      );
-    }
-  }
-
   let guildsRes: Response;
   try {
     guildsRes = await fetchGuildsForUser(accessToken);
@@ -263,6 +237,133 @@ export async function POST(
     Authorization: `Bot ${botToken}`,
     "Content-Type": "application/json",
   };
+
+  const testType = typeof body.testType === "string" ? body.testType.trim().toLowerCase() : "welcome";
+  if (testType === "farewell") {
+    const farewellChannelId = body.farewellChannelId?.trim() ?? "";
+    if (!farewellChannelId || !SNOWFLAKE_RE.test(farewellChannelId)) {
+      return NextResponse.json(
+        {
+          success: false,
+          message: "Выберите канал для прощания.",
+        },
+        { status: 400 }
+      );
+    }
+    const raw = typeof body.farewellMessage === "string" ? body.farewellMessage : "";
+    if (!raw.trim()) {
+      return NextResponse.json(
+        {
+          success: false,
+          message: "Введите сообщение прощания",
+        },
+        { status: 400 }
+      );
+    }
+    const content = resolveFarewellTestVariables(raw);
+    const farewellImageRaw =
+      typeof body.farewellImageDataUrl === "string" ? body.farewellImageDataUrl.trim() : "";
+    const farewellImage = farewellImageRaw.startsWith("data:") ? parseDataUrlImage(farewellImageRaw) : null;
+    let msgRes: Response;
+    try {
+      if (farewellImage) {
+        const filename = pickAttachmentFilename(
+          typeof body.farewellImageFilename === "string" ? body.farewellImageFilename : undefined,
+          farewellImage.mime,
+          "farewell-message"
+        );
+        const form = new FormData();
+        form.append(
+          "payload_json",
+          JSON.stringify({
+            ...(content.trim() ? { content } : {}),
+            attachments: [{ id: 0, filename }],
+          })
+        );
+        form.append(
+          "files[0]",
+          new Blob([toBlobPart(farewellImage.bytes)], { type: farewellImage.mime }),
+          filename
+        );
+        msgRes = await discordFetch(`/channels/${farewellChannelId}/messages`, {
+          method: "POST",
+          headers: { Authorization: `Bot ${botToken}` },
+          body: form,
+        });
+      } else {
+        msgRes = await discordFetch(`/channels/${farewellChannelId}/messages`, {
+          method: "POST",
+          headers: botHeadersJson,
+          body: JSON.stringify({ content }),
+        });
+      }
+    } catch (err) {
+      console.error("[send-test] farewell send failed:", err);
+      return NextResponse.json(
+        {
+          success: false,
+          message: "Ошибка сети при отправке тестового прощания",
+        },
+        { status: 503 }
+      );
+    }
+    if (!msgRes.ok) {
+      const discordError = await readDiscordErrorText(msgRes);
+      return NextResponse.json(
+        {
+          success: false,
+          message: "Не удалось отправить тестовое прощание",
+          discordError,
+        },
+        { status: msgRes.status >= 500 ? 502 : msgRes.status }
+      );
+    }
+    return NextResponse.json({
+      success: true,
+      message: "Тестовое прощание отправлено.",
+    });
+  }
+
+  const deliveryRaw =
+    typeof body.welcomeDeliveryMode === "string"
+      ? body.welcomeDeliveryMode.trim().toLowerCase()
+      : "channel";
+  const deliveryMode: "channel" | "dm" | "both" =
+    deliveryRaw === "both" ? "both" : deliveryRaw === "dm" ? "dm" : "channel";
+  const needDm = deliveryMode === "dm" || deliveryMode === "both";
+  const needChannel = deliveryMode === "channel" || deliveryMode === "both";
+
+  let channelId = "";
+  let welcomeStyle: WelcomeStyle | undefined;
+
+  if (needChannel) {
+    channelId = body.channelId?.trim() ?? "";
+    if (!channelId || !SNOWFLAKE_RE.test(channelId)) {
+      return NextResponse.json(
+        {
+          success: false,
+          message: "channelId is required and must be a valid Discord snowflake",
+        },
+        { status: 400 }
+      );
+    }
+
+    welcomeStyle = body.welcomeStyle as WelcomeStyle | undefined;
+    if (
+      welcomeStyle !== "text" &&
+      welcomeStyle !== "embed" &&
+      welcomeStyle !== "imageCard"
+    ) {
+      return NextResponse.json(
+        {
+          success: false,
+          message:
+            'welcomeStyle must be "text", "embed", or "imageCard"',
+        },
+        { status: 400 }
+      );
+    }
+  }
 
   if (needDm) {
     const dmRaw = typeof body.welcomeDmMessage === "string" ? body.welcomeDmMessage : "";

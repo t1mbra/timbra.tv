@@ -35,6 +35,16 @@ export type GuildConfig = {
   welcomeDmChannelId?: string;
   /** Текст сообщения в канале при дубле (только текст). */
   welcomeDmChannelMessage?: string;
+  /** Включено ли текстовое сообщение при выходе участника. */
+  farewellEnabled?: boolean;
+  /** Канал для прощального сообщения. */
+  farewellChannelId?: string;
+  /** Текст прощального сообщения. */
+  farewellMessage?: string;
+  /** Картинка в прощальном сообщении (data: или http(s)). */
+  farewellImageDataUrl?: string;
+  /** Оригинальное имя файла картинки прощания. */
+  farewellImageFilename?: string;
 };
 
 /** Корневой объект config.json: { guilds: { [guildId]: GuildConfig } }. */

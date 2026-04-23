@@ -197,6 +197,11 @@ type DashboardConfig = {
   embedImageDataUrl: string;
   embedFields: EmbedFieldPersisted[];
   imageCard?: ImageCardConfig;
+  farewellEnabled?: boolean;
+  farewellChannelId?: string;
+  farewellMessage?: string;
+  farewellImageDataUrl?: string;
+  farewellImageFilename?: string;
 };
 
 type CustomSelectOption = {
@@ -232,6 +237,11 @@ type DirtyConfig = {
   welcomeStyle: DashboardConfig["welcomeStyle"];
   textImageDataUrl: string;
   imageCard: ImageCardConfig;
+  farewellEnabled: boolean;
+  farewellChannelId: string;
+  farewellMessage: string;
+  farewellImageDataUrl: string;
+  farewellImageFilename: string;
   // Флаги показывают, присутствовали ли поля в загруженном config.json.
   // Если поле отсутствовало, изменения в соответствующем UI не должны считаться "dirty".
   welcomeStyleExists: boolean;
@@ -268,6 +278,11 @@ function configsEqual(a: DirtyConfig, b: DirtyConfig): boolean {
   if (b.textImageDataUrlExists && a.textImageDataUrl !== b.textImageDataUrl) return false;
   if (b.welcomeDmImageDataUrlExists && a.welcomeDmImageDataUrl !== b.welcomeDmImageDataUrl) return false;
   if (b.imageCardExists && !imageCardConfigsEqual(a.imageCard, b.imageCard)) return false;
+  if (a.farewellEnabled !== b.farewellEnabled) return false;
+  if (a.farewellChannelId !== b.farewellChannelId) return false;
+  if (a.farewellMessage !== b.farewellMessage) return false;
+  if (a.farewellImageDataUrl !== b.farewellImageDataUrl) return false;
+  if (a.farewellImageFilename !== b.farewellImageFilename) return false;
 
   return true;
 }
@@ -522,6 +537,12 @@ const SECTION_ITEMS = [
     subtitle: "",
   },
   {
+    id: "farewell" as const,
+    navLabel: "Прощание",
+    heading: "Прощание",
+    subtitle: "Бот отправит сообщение, когда участник покинет сервер.",
+  },
+  {
     id: "autoRoles" as const,
     navLabel: "Авто-роли",
     heading: "Авто-роли",
@@ -534,6 +555,7 @@ type SectionId = (typeof SECTION_ITEMS)[number]["id"];
 type SectionItem = (typeof SECTION_ITEMS)[number];
 
 type WelcomeMessageEditorMode = "raw" | "preview";
+type EditorModeStorageScope = keyof typeof EDITOR_MODE_STORAGE_KEYS;
 
 type WelcomeEditorHistoryEntry = {
   message: string;
@@ -543,6 +565,12 @@ type WelcomeEditorHistoryEntry = {
 
 const WELCOME_HISTORY_MAX = 80;
 const WELCOME_HISTORY_DEBOUNCE_MS = 550;
+const ACTIVE_SECTION_STORAGE_KEY = "dashboard-active-section";
+const EDITOR_MODE_STORAGE_KEYS = {
+  welcome: "dashboard-editor-mode-welcome",
+  dm: "dashboard-editor-mode-dm",
+  farewell: "dashboard-editor-mode-farewell",
+} as const;
 
 /** Подпись сервера в превью без запроса списка гильдий */
 const PREVIEW_SERVER_LABEL = "Панель сервера";
@@ -588,6 +616,27 @@ function applyWelcomeImageCardPreviewPlaceholders(text: string): string {
 
 const DEFAULT_WELCOME_MESSAGE = "Добро пожаловать, {user}! ✨\nЗагляни в {channel:rules}";
 const DEFAULT_WELCOME_DESCRIPTION = "Очень рады тебя видеть на сервере {server} 💜";
+const DEFAULT_FAREWELL_MESSAGE = "{username} покинул сервер {server}. Будем скучать 🌙";
+
+function resolveFarewellMessageFromConfig(raw: unknown, welcomeMessageRaw: unknown): string {
+  const fallback = DEFAULT_FAREWELL_MESSAGE;
+  const farewell = typeof raw === "string" ? raw : "";
+  const welcomeMessage = typeof welcomeMessageRaw === "string" ? welcomeMessageRaw : "";
+  if (!farewell.trim()) return fallback;
+  const lowered = farewell.toLowerCase();
+  const looksLikeWelcome =
+    farewell === welcomeMessage ||
+    lowered.includes("добро пожаловать") ||
+    farewell.includes("{role:") ||
+    farewell.includes("{channel:");
+  if (looksLikeWelcome) {
+    if (process.env.NODE_ENV === "development") {
+      console.warn("[farewell] detected polluted farewellMessage; using fallback in UI");
+    }
+    return fallback;
+  }
+  return farewell;
+}
 
 const WELCOME_DM_PLACEHOLDER_BUTTONS: { label: string; insert: string }[] = [
   { label: "{user}", insert: "{user}" },
@@ -617,6 +666,16 @@ function getSectionItem(id: SectionId): SectionItem {
   return item ?? SECTION_ITEMS[0];
 }
 
+function parseStoredSectionId(raw: string | null): SectionId | null {
+  if (raw !== "welcome" && raw !== "farewell" && raw !== "autoRoles") return null;
+  return raw;
+}
+
+function parseStoredEditorMode(raw: string | null): WelcomeMessageEditorMode | null {
+  if (raw !== "preview" && raw !== "raw") return null;
+  return raw;
+}
+
 function SectionSidebarIcon({ id, className }: { id: SectionId; className?: string }) {
   const cls = className ?? "h-[18px] w-[18px] shrink-0 opacity-90";
   if (id === "welcome") {
@@ -627,6 +686,15 @@ function SectionSidebarIcon({ id, className }: { id: SectionId; className?: stri
           strokeLinecap="round"
           strokeLinejoin="round"
         />
+      </svg>
+    );
+  }
+  if (id === "farewell") {
+    return (
+      <svg className={cls} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.55" aria-hidden>
+        <path d="M7 3h8a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H7V3Z" strokeLinecap="round" strokeLinejoin="round" />
+        <path d="M7 3 4 5v14l3 2" strokeLinecap="round" strokeLinejoin="round" />
+        <circle cx="13" cy="12" r="0.9" fill="currentColor" stroke="none" />
       </svg>
     );
   }
@@ -1876,6 +1944,24 @@ export function DashboardGuildPageClient({
   const [imageCardBgUploadError, setImageCardBgUploadError] = useState("");
   const [imageCardTypographyOpen, setImageCardTypographyOpen] = useState(false);
   const [welcomeEnabled, setWelcomeEnabled] = useState(true);
+  const [farewellEnabled, setFarewellEnabled] = useState(false);
+  const [farewellChannelId, setFarewellChannelId] = useState("");
+  const [farewellMessage, setFarewellMessage] = useState(DEFAULT_FAREWELL_MESSAGE);
+  const [farewellImageDataUrl, setFarewellImageDataUrl] = useState("");
+  const [farewellImageFilename, setFarewellImageFilename] = useState("");
+  const [farewellMessageEditorMode, setFarewellMessageEditorMode] =
+    useState<WelcomeMessageEditorMode>("preview");
+  const farewellPickerAreaRef = useRef<HTMLDivElement | null>(null);
+  const farewellTextareaRef = useRef<HTMLTextAreaElement | null>(null);
+  const farewellPreviewEditorRef = useRef<HTMLDivElement | null>(null);
+  const farewellRichComposeRef = useRef(false);
+  const farewellRawInsertCaretRef = useRef<TextAreaInsertAnchor | null>(null);
+  const farewellPreviewInsertRangeRef = useRef<Range | null>(null);
+  const farewellPreviewInsertMessageSnapshotRef = useRef<string | null>(null);
+  const farewellImageInputRef = useRef<HTMLInputElement | null>(null);
+  const farewellImageDragDepthRef = useRef(0);
+  const [farewellImageZoneActive, setFarewellImageZoneActive] = useState(false);
+  const [farewellImageUploadError, setFarewellImageUploadError] = useState("");
   const [skipBotAccounts, setSkipBotAccounts] = useState(true);
   const [welcomeDeliveryMode, setWelcomeDeliveryMode] =
     useState<WelcomeDeliveryMode>("channel");
@@ -1908,7 +1994,7 @@ export function DashboardGuildPageClient({
   const [testSendStatusTone, setTestSendStatusTone] = useState<
     "success" | "error" | ""
   >("");
-  const [openPicker, setOpenPicker] = useState<PickerType>(null);
+  const [insertPickerType, setInsertPickerType] = useState<PickerType>(null);
   const [search, setSearch] = useState("");
   const [pickerPortalReady, setPickerPortalReady] = useState(false);
   const [pickerPanelLayout, setPickerPanelLayout] = useState<{
@@ -1935,6 +2021,41 @@ export function DashboardGuildPageClient({
     setLastGuildCookieClient(guildId);
   }, [guildId]);
 
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const storedSection = parseStoredSectionId(window.localStorage.getItem(ACTIVE_SECTION_STORAGE_KEY));
+    if (storedSection) setActiveSection(storedSection);
+    const storedWelcomeMode = parseStoredEditorMode(window.localStorage.getItem(EDITOR_MODE_STORAGE_KEYS.welcome));
+    const storedDmMode = parseStoredEditorMode(window.localStorage.getItem(EDITOR_MODE_STORAGE_KEYS.dm));
+    const storedFarewellMode = parseStoredEditorMode(window.localStorage.getItem(EDITOR_MODE_STORAGE_KEYS.farewell));
+    if (storedWelcomeMode) setMessageEditorMode(storedWelcomeMode);
+    if (storedDmMode) setDmMessageEditorMode(storedDmMode);
+    if (storedFarewellMode) setFarewellMessageEditorMode(storedFarewellMode);
+  }, []);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    window.localStorage.setItem(ACTIVE_SECTION_STORAGE_KEY, activeSection);
+  }, [activeSection]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const persist = (scope: EditorModeStorageScope, mode: WelcomeMessageEditorMode) => {
+      window.localStorage.setItem(EDITOR_MODE_STORAGE_KEYS[scope], mode);
+    };
+    persist("welcome", messageEditorMode);
+  }, [messageEditorMode]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    window.localStorage.setItem(EDITOR_MODE_STORAGE_KEYS.dm, dmMessageEditorMode);
+  }, [dmMessageEditorMode]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    window.localStorage.setItem(EDITOR_MODE_STORAGE_KEYS.farewell, farewellMessageEditorMode);
+  }, [farewellMessageEditorMode]);
+
   /** Инкрементируется при смене гильдии / отмене запроса ресурсов — чтобы finally не снимал loading с чужого запроса */
   const resourcesFetchGenerationRef = useRef(0);
   const welcomePickerAnchorRefs = useRef<Partial<Record<PickerKind, HTMLDivElement | null>>>(
@@ -1946,8 +2067,11 @@ export function DashboardGuildPageClient({
   const welcomeDmPickerAnchorRefs = useRef<Partial<Record<PickerKind, HTMLDivElement | null>>>(
     {}
   );
+  const farewellPickerAnchorRefs = useRef<Partial<Record<PickerKind, HTMLDivElement | null>>>(
+    {}
+  );
   const [insertPickerSurface, setInsertPickerSurface] = useState<
-    "welcome" | "welcomeDm" | "embed" | "imageCardTitle" | "imageCardSubtitle"
+    "welcome" | "welcomeDm" | "farewell" | "embed" | "imageCardTitle" | "imageCardSubtitle"
   >("welcome");
   const previewEditorRef = useRef<HTMLDivElement | null>(null);
   const welcomeRichComposeRef = useRef(false);
@@ -2223,6 +2347,14 @@ export function DashboardGuildPageClient({
           imageCard: mergeImageCard(data.imageCard, {
             availableFontKeys: availableWelcomeCardFontKeys,
           }),
+          farewellEnabled: data.farewellEnabled === true,
+          farewellChannelId:
+            typeof data.farewellChannelId === "string" ? data.farewellChannelId : "",
+          farewellMessage: resolveFarewellMessageFromConfig(data.farewellMessage, data.message),
+          farewellImageDataUrl:
+            typeof data.farewellImageDataUrl === "string" ? data.farewellImageDataUrl : "",
+          farewellImageFilename:
+            typeof data.farewellImageFilename === "string" ? data.farewellImageFilename : "",
           welcomeStyleExists,
           textImageDataUrlExists,
           welcomeDmImageDataUrlExists,
@@ -2233,6 +2365,11 @@ export function DashboardGuildPageClient({
         setHumanRoleId(snapshot.humanRoleId);
         setBotRoleId(snapshot.botRoleId);
         setWelcomeEnabled(snapshot.welcomeEnabled);
+        setFarewellEnabled(snapshot.farewellEnabled);
+        setFarewellChannelId(snapshot.farewellChannelId);
+        setFarewellMessage(snapshot.farewellMessage);
+        setFarewellImageDataUrl(snapshot.farewellImageDataUrl);
+        setFarewellImageFilename(snapshot.farewellImageFilename);
         setSkipBotAccounts(snapshot.skipBotAccounts);
         setWelcomeDeliveryMode(snapshot.welcomeDeliveryMode);
         setWelcomeDmMessage(snapshot.welcomeDmMessage);
@@ -2399,23 +2536,24 @@ export function DashboardGuildPageClient({
 
   useEffect(() => {
     const handleOutsideClick = (event: MouseEvent) => {
-      if (!openPicker) return;
+      if (!insertPickerType) return;
   
       const target = event.target as Node;
   
       if (pickerAreaRef.current?.contains(target)) return;
       if (welcomeDmPickerAreaRef.current?.contains(target)) return;
+      if (farewellPickerAreaRef.current?.contains(target)) return;
       if (embedPickerAreaRef.current?.contains(target)) return;
       if (imageCardTextToolbarRef.current?.contains(target)) return;
       if (pickerPanelRef.current?.contains(target)) return;
 
-      setOpenPicker(null);
+      setInsertPickerType(null);
       setSearch("");
     };
   
     document.addEventListener("mousedown", handleOutsideClick);
     return () => document.removeEventListener("mousedown", handleOutsideClick);
-  }, [openPicker]);
+  }, [insertPickerType]);
 
   const emojiPickerItems = useMemo<PickerItem[]>(
     () =>
@@ -2454,13 +2592,13 @@ export function DashboardGuildPageClient({
   );
   const pickerItems = useMemo<PickerItem[]>(() => {
     const items =
-      openPicker === "emoji"
+      insertPickerType === "emoji"
         ? emojiPickerItems
-        : openPicker === "channel"
+        : insertPickerType === "channel"
           ? channelPickerItems
-          : openPicker === "role"
+          : insertPickerType === "role"
             ? rolePickerItems
-            : openPicker === "variable"
+            : insertPickerType === "variable"
               ? variableOptions
               : [];
     if (!search.trim()) return items;
@@ -2469,26 +2607,34 @@ export function DashboardGuildPageClient({
       const byLabel = item.label.toLowerCase().includes(q);
       const byInsert = item.insert.toLowerCase().includes(q);
       const byVarSub =
-        openPicker === "variable" &&
+        insertPickerType === "variable" &&
         (item.variableSubtitle?.toLowerCase().includes(q) ?? false);
       const byHash =
-        openPicker === "channel" && `#${item.label}`.toLowerCase().includes(q);
-      const byAt = openPicker === "role" && `@${item.label}`.toLowerCase().includes(q);
-      if (openPicker === "variable") return byLabel || byInsert || byVarSub;
+        insertPickerType === "channel" && `#${item.label}`.toLowerCase().includes(q);
+      const byAt = insertPickerType === "role" && `@${item.label}`.toLowerCase().includes(q);
+      if (insertPickerType === "variable") return byLabel || byInsert || byVarSub;
       return byLabel || byInsert || byHash || byAt;
     });
-  }, [openPicker, search, emojiPickerItems, channelPickerItems, rolePickerItems, variableOptions]);
+  }, [
+    insertPickerType,
+    search,
+    insertPickerSurface,
+    emojiPickerItems,
+    channelPickerItems,
+    rolePickerItems,
+    variableOptions,
+  ]);
 
   useEffect(() => {
     setSearch("");
-  }, [openPicker, insertPickerSurface]);
+  }, [insertPickerType, insertPickerSurface]);
 
   useEffect(() => {
     setPickerPortalReady(true);
   }, []);
 
   useLayoutEffect(() => {
-    if (!openPicker) {
+    if (!insertPickerType) {
       setPickerPanelLayout(null);
       return;
     }
@@ -2496,16 +2642,18 @@ export function DashboardGuildPageClient({
     const updateLayout = () => {
       let anchor: HTMLDivElement | null | undefined;
       if (insertPickerSurface === "embed") {
-        anchor = embedPickerAnchorRefs.current[openPicker!];
+        anchor = embedPickerAnchorRefs.current[insertPickerType];
       } else if (insertPickerSurface === "welcomeDm") {
-        anchor = welcomeDmPickerAnchorRefs.current[openPicker!];
+        anchor = welcomeDmPickerAnchorRefs.current[insertPickerType];
+      } else if (insertPickerSurface === "farewell") {
+        anchor = farewellPickerAnchorRefs.current[insertPickerType];
       } else if (
         (insertPickerSurface === "imageCardTitle" || insertPickerSurface === "imageCardSubtitle") &&
-        openPicker
+        insertPickerType
       ) {
-        anchor = imageCardToolbarPickerAnchorRefs.current[openPicker] ?? undefined;
+        anchor = imageCardToolbarPickerAnchorRefs.current[insertPickerType] ?? undefined;
       } else {
-        anchor = welcomePickerAnchorRefs.current[openPicker!];
+        anchor = welcomePickerAnchorRefs.current[insertPickerType];
       }
       if (!anchor) return;
       const rect = anchor.getBoundingClientRect();
@@ -2530,7 +2678,7 @@ export function DashboardGuildPageClient({
       window.removeEventListener("resize", updateLayout);
       window.removeEventListener("scroll", updateLayout, true);
     };
-  }, [openPicker, insertPickerSurface, imageCardTextToolbarPos]);
+  }, [insertPickerType, insertPickerSurface, imageCardTextToolbarPos]);
 
   useLayoutEffect(() => {
     if (welcomeStyle !== "imageCard") {
@@ -2642,12 +2790,12 @@ export function DashboardGuildPageClient({
   useEffect(() => {
     if (welcomeStyle !== "imageCard") return;
     if (imageCardActiveField !== "title" && imageCardActiveField !== "subtitle") {
-      setOpenPicker(null);
+      setInsertPickerType(null);
     }
   }, [welcomeStyle, imageCardActiveField]);
 
   useEffect(() => {
-    setOpenPicker(null);
+    setInsertPickerType(null);
     setSearch("");
     if (welcomeStyle === "imageCard") {
       setImageCardActiveField(null);
@@ -2715,6 +2863,7 @@ export function DashboardGuildPageClient({
   );
   const isChannelComposerVisible = welcomeDeliveryMode === "channel" || welcomeDeliveryMode === "both";
   const isDmComposerVisible = welcomeDeliveryMode === "dm" || welcomeDeliveryMode === "both";
+  const isFarewellComposerVisible = activeSection === "farewell";
   const welcomeRichVisualKey = useMemo(
     () =>
       [
@@ -2741,8 +2890,24 @@ export function DashboardGuildPageClient({
     }),
     [resources.channels, resources.roles, resources.emojis, previewDateStr, previewTemplateValues]
   );
+  const farewellRichCtx = useMemo<WelcomeRichDomContext>(
+    () => ({
+      channelById: new Map(resources.channels.map((c) => [c.id, c])),
+      roleById: new Map(resources.roles.map((r) => [r.id, r])),
+      emojiMetaById: new Map(
+        resources.emojis.filter((e) => e.id).map((e) => [e.id as string, e.animated])
+      ),
+      previewDateStr,
+      previewUserAt: previewTemplateValues.userAt,
+      previewUsername: previewTemplateValues.username,
+      previewServerLabel: previewTemplateValues.server,
+      previewMemberCount: previewTemplateValues.memberCount,
+    }),
+    [resources.channels, resources.roles, resources.emojis, previewDateStr, previewTemplateValues]
+  );
   const previewVisualHydratedKeyRef = useRef<string | null>(null);
   const dmVisualHydratedKeyRef = useRef<string | null>(null);
+  const farewellVisualHydratedKeyRef = useRef<string | null>(null);
 
   useLayoutEffect(() => {
     if (!isChannelComposerVisible) return;
@@ -2776,6 +2941,32 @@ export function DashboardGuildPageClient({
     welcomeRichVisualKey,
     previewEditorSyncSeq,
     activeSection,
+  ]);
+
+  useLayoutEffect(() => {
+    if (!isFarewellComposerVisible) return;
+    if (farewellMessageEditorMode !== "preview") return;
+    const runFill = () => {
+      const el = farewellPreviewEditorRef.current;
+      if (!el) return;
+      const focused = document.activeElement === el;
+      const currentSerialized = serializeWelcomeRichEditorRoot(el);
+      const sameVisual = farewellVisualHydratedKeyRef.current === welcomeRichVisualKey;
+      if (currentSerialized === farewellMessage && sameVisual) return;
+      if (focused) return;
+      fillWelcomeRichEditor(el, farewellMessage, farewellRichCtx);
+      farewellVisualHydratedKeyRef.current = welcomeRichVisualKey;
+    };
+    runFill();
+    queueMicrotask(runFill);
+  }, [
+    isFarewellComposerVisible,
+    farewellMessageEditorMode,
+    richEditorBootstrap,
+    farewellRichCtx,
+    welcomeRichVisualKey,
+    activeSection,
+    farewellMessage,
   ]);
 
   useLayoutEffect(() => {
@@ -2832,6 +3023,17 @@ export function DashboardGuildPageClient({
   }, [dmMessageEditorMode, welcomeDmMessage, isDmComposerVisible]);
 
   useLayoutEffect(() => {
+    if (farewellMessageEditorMode === "raw") autoGrowTextarea(farewellTextareaRef.current);
+  }, [farewellMessageEditorMode, farewellMessage, isFarewellComposerVisible]);
+
+  useEffect(() => {
+    if (process.env.NODE_ENV !== "development") return;
+    if (farewellMessage === message && farewellMessage.trim().length > 0) {
+      console.warn("[farewell] contamination guard: farewellMessage equals welcome message state");
+    }
+  }, [farewellMessage, message]);
+
+  useLayoutEffect(() => {
     if (welcomeStyle === "embed") autoGrowTextarea(embedDescriptionTextareaRef.current);
   }, [welcomeStyle, description]);
 
@@ -2852,7 +3054,7 @@ export function DashboardGuildPageClient({
     const plain = event.clipboardData.getData("text/plain");
     const editor = previewEditorRef.current;
     if (!editor) return;
-    insertWelcomeNodesAtCaret(editor, createWelcomeInsertNodesFromPlainText(plain, welcomeRichCtx));
+    insertWelcomeNodesAtCaret(editor, createWelcomeInsertNodesFromPlainText(plain, farewellRichCtx));
     handleWelcomeRichInput();
     flushWelcomeHistoryDebouncedNow();
   };
@@ -3202,6 +3404,374 @@ export function DashboardGuildPageClient({
     sel.addRange(r);
   };
 
+  const captureFarewellInsertAnchor = () => {
+    if (farewellMessageEditorMode === "raw") {
+      farewellPreviewInsertRangeRef.current = null;
+      farewellPreviewInsertMessageSnapshotRef.current = null;
+      const ta = farewellTextareaRef.current;
+      if (ta) {
+        const v = ta.value;
+        farewellRawInsertCaretRef.current = {
+          start: ta.selectionStart,
+          end: ta.selectionEnd,
+          valueLen: v.length,
+        };
+      }
+      return;
+    }
+    farewellRawInsertCaretRef.current = null;
+    const ed = farewellPreviewEditorRef.current;
+    const sel = window.getSelection();
+    if (ed) {
+      farewellPreviewInsertMessageSnapshotRef.current = serializeWelcomeRichEditorRoot(ed);
+    }
+    if (ed && sel && sel.rangeCount > 0 && sel.anchorNode && ed.contains(sel.anchorNode)) {
+      farewellPreviewInsertRangeRef.current = sel.getRangeAt(0).cloneRange();
+    } else if (ed) {
+      const r = document.createRange();
+      r.selectNodeContents(ed);
+      r.collapse(false);
+      farewellPreviewInsertRangeRef.current = r.cloneRange();
+    }
+  };
+
+  const handleFarewellRichInput = () => {
+    if (farewellRichComposeRef.current) return;
+    const el = farewellPreviewEditorRef.current;
+    if (!el) return;
+    farewellPreviewInsertRangeRef.current = null;
+    farewellPreviewInsertMessageSnapshotRef.current = null;
+    normalizeWelcomeRichDivs(el);
+    const next = serializeWelcomeRichEditorRoot(el);
+    setFarewellMessage(next);
+  };
+
+  const handleFarewellRichPaste = (event: ClipboardEvent<HTMLDivElement>) => {
+    event.preventDefault();
+    const plain = event.clipboardData.getData("text/plain");
+    const editor = farewellPreviewEditorRef.current;
+    if (!editor) return;
+    insertWelcomeNodesAtCaret(editor, createWelcomeInsertNodesFromPlainText(plain, welcomeRichCtx));
+    handleFarewellRichInput();
+  };
+
+  const handleFarewellRichKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
+    const ed = farewellPreviewEditorRef.current;
+    if (!ed) return;
+    if (event.key === "Backspace" || event.key === "Delete") {
+      const sel = window.getSelection();
+      if (sel && sel.rangeCount > 0) {
+        const range = sel.getRangeAt(0);
+        if (!range.collapsed && ed.contains(range.commonAncestorContainer)) {
+          const tokenSelected =
+            Array.from(ed.querySelectorAll(`[${WELCOME_TOKEN_ATTR}="true"]`)).some((node) =>
+              range.intersectsNode(node)
+            );
+          if (tokenSelected) {
+            event.preventDefault();
+            document.execCommand("delete");
+            handleFarewellRichInput();
+            return;
+          }
+        }
+      }
+      if (
+        tryHandleWelcomeTokenBoundaryDelete(ed, event, () => {
+          handleFarewellRichInput();
+        })
+      ) {
+        return;
+      }
+      if (
+        tryHandleWelcomeTemplateVariableKeydown(ed, event, farewellRichComposeRef, () => {
+          handleFarewellRichInput();
+        })
+      ) {
+        return;
+      }
+    }
+    if (event.key !== "Enter") return;
+    event.preventDefault();
+    insertWelcomeNodesAtCaret(ed, [document.createElement("br")]);
+    handleFarewellRichInput();
+  };
+
+  const handleFarewellRichCopy = (event: ClipboardEvent<HTMLDivElement>) => {
+    const ed = farewellPreviewEditorRef.current;
+    if (!ed) return;
+    const sel = window.getSelection();
+    if (!sel || sel.rangeCount === 0) return;
+    const range = sel.getRangeAt(0);
+    if (!ed.contains(range.commonAncestorContainer)) return;
+    const holder = document.createElement("div");
+    holder.appendChild(range.cloneContents());
+    const plain = serializeWelcomeRichEditorRoot(holder);
+    if (plain.length > 0) {
+      event.clipboardData?.setData("text/plain", plain);
+      event.preventDefault();
+    }
+  };
+
+  const handleFarewellRichCut = (event: ClipboardEvent<HTMLDivElement>) => {
+    const ed = farewellPreviewEditorRef.current;
+    if (!ed) return;
+    const sel = window.getSelection();
+    if (!sel || sel.rangeCount === 0) return;
+    const range = sel.getRangeAt(0);
+    if (!ed.contains(range.commonAncestorContainer) || range.collapsed) return;
+    const holder = document.createElement("div");
+    holder.appendChild(range.cloneContents());
+    const plain = serializeWelcomeRichEditorRoot(holder);
+    if (plain.length > 0) {
+      event.clipboardData?.setData("text/plain", plain);
+      event.preventDefault();
+      document.execCommand("delete");
+      handleFarewellRichInput();
+    }
+  };
+
+  const handleFarewellRichDoubleClick = (event: ReactMouseEvent<HTMLDivElement>) => {
+    const ed = farewellPreviewEditorRef.current;
+    if (!ed) return;
+    const target = event.target as Node | null;
+    const token = findWelcomeTokenSpan(target, ed);
+    if (!token || token.getAttribute("data-token-type") !== "emoji") return;
+    event.preventDefault();
+    const sel = window.getSelection();
+    if (!sel) return;
+    const r = document.createRange();
+    r.selectNode(token);
+    sel.removeAllRanges();
+    sel.addRange(r);
+  };
+
+  const renderSharedMessageEditor = (cfg: {
+    sectionDataBlock: string;
+    pickerAreaRef: React.RefObject<HTMLDivElement | null>;
+    labelId: string;
+    title: string;
+    helper: string;
+    mode: WelcomeMessageEditorMode;
+    onModeChange: (mode: WelcomeMessageEditorMode) => void;
+    rawRef: React.RefObject<HTMLTextAreaElement | null>;
+    value: string;
+    onRawChange: (next: string) => void;
+    onRawBlur?: () => void;
+    previewRef: React.RefObject<HTMLDivElement | null>;
+    onPreviewCopy: (event: ClipboardEvent<HTMLDivElement>) => void;
+    onPreviewCut: (event: ClipboardEvent<HTMLDivElement>) => void;
+    onPreviewDoubleClick: (event: ReactMouseEvent<HTMLDivElement>) => void;
+    onPreviewInput: () => void;
+    onPreviewCompositionStart: () => void;
+    onPreviewCompositionEnd: () => void;
+    onPreviewPaste: (event: ClipboardEvent<HTMLDivElement>) => void;
+    onPreviewKeyDown: (event: KeyboardEvent<HTMLDivElement>) => void;
+    onPreviewBlur?: () => void;
+    showImageButton: boolean;
+    imageButtonAriaAdd?: string;
+    imageButtonAriaReplace?: string;
+    imageInputRef?: React.RefObject<HTMLInputElement | null>;
+    onImageInput?: (event: ChangeEvent<HTMLInputElement>) => void;
+    onImageButtonClick?: () => void;
+    toolbarTypes: PickerKind[];
+    toolbarKeyPrefix: string;
+    toolbarAnchorsRef: React.MutableRefObject<Partial<Record<PickerKind, HTMLDivElement | null>>>;
+    pickerScope: "welcome" | "welcomeDm" | "farewell";
+    captureInsertAnchor: () => void;
+    imageDataUrl?: string;
+    imagePreviewAlt?: string;
+    imageZoneActive?: boolean;
+    onImageDragEnter?: (e: DragEvent<HTMLElement>) => void;
+    onImageDragLeave?: (e: DragEvent<HTMLElement>) => void;
+    onImageDragOver?: (e: DragEvent<HTMLElement>) => void;
+    onImageDrop?: (e: DragEvent<HTMLElement>) => void;
+    onImageRemove?: () => void;
+    imageUploadError?: string;
+    wrapInModule?: boolean;
+  }) => {
+    const content = (
+      <div
+        ref={cfg.pickerAreaRef}
+        className="relative overflow-visible bg-transparent"
+        role="group"
+        aria-labelledby={cfg.labelId}
+      >
+        <div className="flex flex-col gap-2.5 px-4 pb-3 pt-4 sm:flex-row sm:items-start sm:justify-between sm:gap-4 sm:px-5 sm:pb-3 sm:pt-4">
+          <div className="min-w-0 pr-2">
+            <p className="ds-kicker" id={cfg.labelId}>
+              {cfg.title}
+            </p>
+            <p className="welcome-help-text mt-0.5 max-w-prose">{cfg.helper}</p>
+          </div>
+          <GlassIconSegmentedGroup
+            variant="tabs"
+            className="sm:mt-0.5"
+            value={cfg.mode}
+            onValueChange={(next) => cfg.onModeChange(next as WelcomeMessageEditorMode)}
+            ariaLabel="Режим редактора: визуальный или исходный текст"
+            options={[
+              {
+                value: "preview",
+                title: "Визуальный редактор",
+                ariaLabel: "Визуальный редактор",
+                label: <IconWelcomePreviewMode className="h-4 w-4" />,
+              },
+              {
+                value: "raw",
+                title: "Исходный текст",
+                ariaLabel: "Исходный текст",
+                label: <IconWelcomeRawMode className="h-4 w-4" />,
+              },
+            ]}
+          />
+        </div>
+        <div className="relative min-h-28 px-4 pb-4 sm:px-5 sm:pb-4">
+          {cfg.showImageButton && cfg.imageInputRef ? (
+            <input
+              ref={cfg.imageInputRef}
+              type="file"
+              accept="image/*"
+              onChange={cfg.onImageInput}
+              className="hidden"
+            />
+          ) : null}
+          {cfg.mode === "raw" ? (
+            <textarea
+              ref={cfg.rawRef}
+              value={cfg.value}
+              onChange={(e) => cfg.onRawChange(e.target.value)}
+              onBlur={cfg.onRawBlur}
+              className="min-h-28 w-full resize-none overflow-hidden rounded-none border-0 bg-transparent px-0.5 py-2 pb-12 text-[15px] leading-relaxed text-zinc-200 shadow-none outline-none focus-visible:ring-0 focus-visible:ring-offset-0"
+              aria-labelledby={cfg.labelId}
+              spellCheck={false}
+            />
+          ) : (
+            <div
+              ref={cfg.previewRef}
+              role="textbox"
+              aria-multiline="true"
+              aria-labelledby={cfg.labelId}
+              contentEditable
+              suppressContentEditableWarning
+              spellCheck={false}
+              className="min-h-28 w-full whitespace-pre-wrap break-words px-0.5 py-2 pb-12 text-[15px] leading-relaxed text-zinc-200 outline-none [&_.welcome-interactive-token]:select-all"
+              onCopy={cfg.onPreviewCopy}
+              onCut={cfg.onPreviewCut}
+              onDoubleClick={cfg.onPreviewDoubleClick}
+              onInput={cfg.onPreviewInput}
+              onCompositionStart={cfg.onPreviewCompositionStart}
+              onCompositionEnd={cfg.onPreviewCompositionEnd}
+              onPaste={cfg.onPreviewPaste}
+              onKeyDown={cfg.onPreviewKeyDown}
+              onBlur={cfg.onPreviewBlur}
+            />
+          )}
+          <div className="pointer-events-none absolute bottom-3.5 right-3.5 z-10 flex items-center justify-end gap-1.5">
+            {cfg.showImageButton && !cfg.imageDataUrl ? (
+              <button
+                type="button"
+                aria-label={cfg.imageDataUrl ? cfg.imageButtonAriaReplace : cfg.imageButtonAriaAdd}
+                title={cfg.imageDataUrl ? cfg.imageButtonAriaReplace : cfg.imageButtonAriaAdd}
+                onMouseDown={(e) => e.preventDefault()}
+                onClick={cfg.onImageButtonClick}
+                className="group pointer-events-auto inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-white/[0.09] bg-zinc-950/42 p-0 shadow-[0_8px_32px_rgba(0,0,0,0.4),0_2px_12px_rgba(0,0,0,0.2)] backdrop-blur-2xl backdrop-saturate-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)] focus-visible:ring-offset-2 focus-visible:ring-offset-[rgba(9,9,15,0.96)]"
+              >
+                <span
+                  className={`inline-flex h-7 w-7 items-center justify-center rounded-full ${toolbarIconGroupInteractionClass}`}
+                >
+                  <IconWelcomeImagePlaceholder className="h-4 w-4" />
+                </span>
+              </button>
+            ) : null}
+            <div
+              className="pointer-events-auto flex h-9 min-h-9 items-center gap-0.5 rounded-full border border-white/[0.09] bg-zinc-950/42 px-1 py-1 shadow-[0_8px_32px_rgba(0,0,0,0.4),0_2px_12px_rgba(0,0,0,0.2)] backdrop-blur-2xl backdrop-saturate-150"
+              role="toolbar"
+              aria-label="Вставка в сообщение"
+            >
+              {cfg.toolbarTypes.map((type) => (
+                <div
+                  key={`${cfg.toolbarKeyPrefix}-${type}`}
+                  ref={(el) => {
+                    cfg.toolbarAnchorsRef.current[type] = el;
+                  }}
+                  className="relative"
+                >
+                  <button
+                    type="button"
+                    aria-label={getTitleByType(type)}
+                    title={getTitleByType(type)}
+                    aria-pressed={
+                      insertPickerType === type && insertPickerSurface === cfg.pickerScope
+                    }
+                    onMouseDown={(e) => {
+                      cfg.captureInsertAnchor();
+                      e.preventDefault();
+                    }}
+                    onClick={() => {
+                      const isActiveInScope =
+                        insertPickerSurface === cfg.pickerScope && insertPickerType === type;
+                      setInsertPickerSurface(cfg.pickerScope);
+                      setInsertPickerType(isActiveInScope ? null : type);
+                    }}
+                    className={toolbarButtonClass(type, cfg.pickerScope)}
+                  >
+                    {insertToolbarIcon(type)}
+                  </button>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+        {cfg.imageDataUrl ? (
+          <div className="px-4 pb-4 sm:px-5 sm:pb-4">
+            <div
+              className={`group relative mt-1 aspect-[16/10] w-full overflow-hidden rounded-xl bg-black/[0.16] shadow-[inset_0_1px_0_rgba(255,255,255,0.04)] ring-1 ring-white/[0.06] transition ${
+                cfg.imageZoneActive ? "ring-2 ring-white/[0.14] ring-inset" : ""
+              }`}
+              onDragEnter={cfg.onImageDragEnter}
+              onDragLeave={cfg.onImageDragLeave}
+              onDragOver={cfg.onImageDragOver}
+              onDrop={cfg.onImageDrop}
+            >
+              <div className="relative flex h-full w-full cursor-default items-center justify-center p-2 sm:p-3">
+                <img
+                  src={cfg.imageDataUrl}
+                  alt={cfg.imagePreviewAlt ?? ""}
+                  className="max-h-full w-full max-w-full object-contain drop-shadow-sm"
+                />
+              </div>
+              <div className="pointer-events-none absolute right-2.5 top-2.5 flex justify-end">
+                <button
+                  type="button"
+                  aria-label="Удалить изображение"
+                  title="Удалить изображение"
+                  onClick={cfg.onImageRemove}
+                  className="pointer-events-auto inline-flex size-8 shrink-0 items-center justify-center rounded-full border border-white/[0.09] bg-zinc-950/52 text-zinc-300 shadow-[0_8px_32px_rgba(0,0,0,0.35),0_2px_12px_rgba(0,0,0,0.2)] backdrop-blur-2xl backdrop-saturate-150 transition hover:bg-zinc-900/65 hover:text-zinc-100"
+                >
+                  <IconTrashCompact className="h-4 w-4" />
+                </button>
+              </div>
+            </div>
+          </div>
+        ) : null}
+        {cfg.imageUploadError ? (
+          <p className="px-4 pb-4 text-xs text-rose-300 sm:px-5 sm:pb-4">
+            {cfg.imageUploadError}
+          </p>
+        ) : null}
+      </div>
+    );
+    if (cfg.wrapInModule === false) return content;
+    return (
+      <section
+        data-welcome-block={cfg.sectionDataBlock}
+        className="welcome-settings-module overflow-hidden rounded-2xl ring-1 ring-white/[0.08] shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]"
+      >
+        {content}
+      </section>
+    );
+  };
+
   const handlePick = (item: PickerItem) => {
     const insert = item.insert;
     if (insertPickerSurface === "imageCardTitle") {
@@ -3214,7 +3784,7 @@ export function DashboardGuildPageClient({
         );
         previewInsertRangeRef.current = null;
         previewInsertMessageSnapshotRef.current = null;
-        setOpenPicker(null);
+        setInsertPickerType(null);
         setSearch("");
         return;
       }
@@ -3229,12 +3799,12 @@ export function DashboardGuildPageClient({
         );
         previewInsertRangeRef.current = null;
         previewInsertMessageSnapshotRef.current = null;
-        setOpenPicker(null);
+        setInsertPickerType(null);
         setSearch("");
         return;
       }
     }
-    if (welcomeStyleRef.current === "embed") {
+    if (insertPickerSurface === "embed" && welcomeStyleRef.current === "embed") {
       const ta = embedDescriptionTextareaRef.current;
       if (ta) {
         const saved = embedDescInsertCaretRef.current;
@@ -3244,7 +3814,7 @@ export function DashboardGuildPageClient({
         insertTextIntoTextAreaControlled(ta, insert, saved, (next, _c) => setDescription(next));
         previewInsertRangeRef.current = null;
         previewInsertMessageSnapshotRef.current = null;
-        setOpenPicker(null);
+        setInsertPickerType(null);
         setSearch("");
         return;
       }
@@ -3281,7 +3851,7 @@ export function DashboardGuildPageClient({
         dmPreviewInsertRangeRef.current = null;
         dmPreviewInsertMessageSnapshotRef.current = null;
         dmRawInsertCaretRef.current = null;
-        setOpenPicker(null);
+        setInsertPickerType(null);
         setSearch("");
         return;
       }
@@ -3291,7 +3861,7 @@ export function DashboardGuildPageClient({
         dmPreviewInsertRangeRef.current = null;
         dmPreviewInsertMessageSnapshotRef.current = null;
         dmRawInsertCaretRef.current = null;
-        setOpenPicker(null);
+        setInsertPickerType(null);
         setSearch("");
         return;
       }
@@ -3302,7 +3872,63 @@ export function DashboardGuildPageClient({
       insertTextIntoTextAreaControlled(textareaDm, insert, savedDmCaret, (nextValue) => {
         setWelcomeDmMessage(nextValue);
       });
-      setOpenPicker(null);
+      setInsertPickerType(null);
+      setSearch("");
+      return;
+    }
+    if (insertPickerSurface === "farewell") {
+      if (farewellMessageEditorMode === "preview" && farewellPreviewEditorRef.current) {
+        const editor = farewellPreviewEditorRef.current;
+        const snap = farewellPreviewInsertMessageSnapshotRef.current;
+        farewellPreviewInsertMessageSnapshotRef.current = null;
+        const savedRange = farewellPreviewInsertRangeRef.current;
+        farewellPreviewInsertRangeRef.current = null;
+        const currentSerialized = serializeWelcomeRichEditorRoot(editor);
+        const useSaved = snap !== null && snap === currentSerialized && savedRange !== null;
+        let range: Range;
+        try {
+          range = resolveWelcomePreviewInsertRange(editor, useSaved ? savedRange : null);
+        } catch {
+          range = document.createRange();
+          range.selectNodeContents(editor);
+          range.collapse(false);
+        }
+        editor.focus();
+        const sel = window.getSelection();
+        if (sel) {
+          sel.removeAllRanges();
+          sel.addRange(range);
+        }
+        const nodes = createWelcomeInsertNodesFromPlainText(insert, farewellRichCtx);
+        const html = createWelcomeInsertHtml(insert, farewellRichCtx);
+        insertWelcomeHtmlAtCaret(editor, html, nodes);
+        normalizeWelcomeRichDivs(editor);
+        setFarewellMessage(serializeWelcomeRichEditorRoot(editor));
+        farewellPreviewInsertRangeRef.current = null;
+        farewellPreviewInsertMessageSnapshotRef.current = null;
+        farewellRawInsertCaretRef.current = null;
+        setInsertPickerType(null);
+        setSearch("");
+        return;
+      }
+      const textareaFarewell = farewellTextareaRef.current;
+      if (!textareaFarewell) {
+        setFarewellMessage((prev) => prev + insert);
+        farewellPreviewInsertRangeRef.current = null;
+        farewellPreviewInsertMessageSnapshotRef.current = null;
+        farewellRawInsertCaretRef.current = null;
+        setInsertPickerType(null);
+        setSearch("");
+        return;
+      }
+      const savedFarewellCaret = farewellRawInsertCaretRef.current;
+      farewellRawInsertCaretRef.current = null;
+      farewellPreviewInsertRangeRef.current = null;
+      farewellPreviewInsertMessageSnapshotRef.current = null;
+      insertTextIntoTextAreaControlled(textareaFarewell, insert, savedFarewellCaret, (nextValue) => {
+        setFarewellMessage(nextValue);
+      });
+      setInsertPickerType(null);
       setSearch("");
       return;
     }
@@ -3344,7 +3970,7 @@ export function DashboardGuildPageClient({
       previewInsertRangeRef.current = null;
       previewInsertMessageSnapshotRef.current = null;
       rawInsertCaretRef.current = null;
-      setOpenPicker(null);
+      setInsertPickerType(null);
       setSearch("");
       return;
     }
@@ -3354,7 +3980,7 @@ export function DashboardGuildPageClient({
       previewInsertRangeRef.current = null;
       previewInsertMessageSnapshotRef.current = null;
       rawInsertCaretRef.current = null;
-      setOpenPicker(null);
+      setInsertPickerType(null);
       setSearch("");
       return;
     }
@@ -3371,13 +3997,18 @@ export function DashboardGuildPageClient({
         editorMode: "raw",
       });
     });
-    setOpenPicker(null);
+    setInsertPickerType(null);
     setSearch("");
   };
 
   const currentConfig = useMemo<DirtyConfig>(
     () => ({
       welcomeEnabled,
+      farewellEnabled,
+      farewellChannelId,
+      farewellMessage,
+      farewellImageDataUrl,
+      farewellImageFilename,
       channelId,
       humanRoleId,
       botRoleId,
@@ -3412,6 +4043,11 @@ export function DashboardGuildPageClient({
     }),
     [
       welcomeEnabled,
+      farewellEnabled,
+      farewellChannelId,
+      farewellMessage,
+      farewellImageDataUrl,
+      farewellImageFilename,
       channelId,
       humanRoleId,
       botRoleId,
@@ -3681,8 +4317,65 @@ export function DashboardGuildPageClient({
     }
   };
 
+  const handleSendTestFarewell = async () => {
+    if (!farewellChannelId.trim()) {
+      setTestSendStatus("Выберите канал для прощания.");
+      setTestSendStatusTone("error");
+      return;
+    }
+    if (!farewellMessage.trim()) {
+      setTestSendStatus("Введите сообщение прощания");
+      setTestSendStatusTone("error");
+      return;
+    }
+
+    setIsSendingTest(true);
+    setTestSendStatus("");
+    setTestSendStatusTone("");
+
+    try {
+      const payload = {
+        testType: "farewell",
+        farewellChannelId: farewellChannelId.trim(),
+        farewellMessage,
+        farewellImageDataUrl,
+        farewellImageFilename,
+      };
+      const res = await fetch(`/api/discord/guilds/${guildId}/send-test`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+      const data = (await res.json().catch(() => ({}))) as {
+        success?: boolean;
+        message?: string;
+        error?: string;
+        discordError?: string;
+      };
+      if (res.ok && data.success) {
+        setTestSendStatus(data.message?.trim() || "Тестовое прощание отправлено.");
+        setTestSendStatusTone("success");
+        return;
+      }
+      const base = data.message?.trim() || data.error?.trim() || "Не удалось отправить тестовое прощание";
+      const discord = data.discordError?.trim();
+      setTestSendStatus(discord ? `${base} · ${discord}` : base);
+      setTestSendStatusTone("error");
+    } catch {
+      setTestSendStatus("Ошибка сети");
+      setTestSendStatusTone("error");
+    } finally {
+      setIsSendingTest(false);
+    }
+  };
+
   const handleRevertChanges = () => {
     if (!lastSavedConfig) return;
+    setFarewellEnabled(lastSavedConfig.farewellEnabled);
+    setFarewellChannelId(lastSavedConfig.farewellChannelId);
+    setFarewellMessage(lastSavedConfig.farewellMessage);
+    setFarewellImageDataUrl(lastSavedConfig.farewellImageDataUrl);
+    setFarewellImageFilename(lastSavedConfig.farewellImageFilename);
     setChannelId(lastSavedConfig.channelId);
     setHumanRoleId(lastSavedConfig.humanRoleId);
     setBotRoleId(lastSavedConfig.botRoleId);
@@ -3724,6 +4417,11 @@ export function DashboardGuildPageClient({
     setIsSaving(true);
     const data = {
       welcomeEnabled,
+      farewellEnabled,
+      farewellChannelId,
+      farewellMessage,
+      farewellImageDataUrl,
+      farewellImageFilename,
       channelId,
       humanRoleId,
       botRoleId,
@@ -3808,6 +4506,25 @@ export function DashboardGuildPageClient({
     }
   };
 
+  const processFarewellImageFile = async (file: File | null | undefined) => {
+    if (!file || !file.type.startsWith("image/")) return;
+    setFarewellImageUploadError("");
+    try {
+      const prepared = await preprocessUploadImage(file);
+      setFarewellImageDataUrl(prepared.dataUrl);
+      setFarewellImageFilename(prepared.file.name || "");
+    } catch (error) {
+      if (error instanceof Error && error.message === "gif-too-big") {
+        setFarewellImageUploadError(DASHBOARD_GIF_TOO_BIG_ERROR);
+      } else if (error instanceof Error && error.message === "too-big") {
+        setFarewellImageUploadError(DASHBOARD_FILE_TOO_BIG_ERROR);
+      } else {
+        setFarewellImageUploadError("Не удалось обработать изображение.");
+      }
+    }
+  };
+
+
   const handleTextImageInput = (event: ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     processImageFile(file);
@@ -3852,12 +4569,27 @@ export function DashboardGuildPageClient({
     event.target.value = "";
   };
 
+  const handleFarewellImageInput = (event: ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    processFarewellImageFile(file);
+    event.target.value = "";
+  };
+
+
   const handleDmImageDrop = (event: DragEvent<HTMLElement>) => {
     event.preventDefault();
     welcomeDmImageDragDepthRef.current = 0;
     setWelcomeDmImageZoneActive(false);
     processDmImageFile(event.dataTransfer.files?.[0]);
   };
+
+  const handleFarewellImageDrop = (event: DragEvent<HTMLElement>) => {
+    event.preventDefault();
+    farewellImageDragDepthRef.current = 0;
+    setFarewellImageZoneActive(false);
+    processFarewellImageFile(event.dataTransfer.files?.[0]);
+  };
+
 
   const onWelcomeDmImageDragEnter = (e: DragEvent<HTMLElement>) => {
     e.preventDefault();
@@ -3876,6 +4608,31 @@ export function DashboardGuildPageClient({
   };
 
   const onWelcomeDmImageDragOver = (e: DragEvent<HTMLElement>) => {
+    e.preventDefault();
+    try {
+      e.dataTransfer.dropEffect = "copy";
+    } catch {
+      /* ignore */
+    }
+  };
+
+  const onFarewellImageDragEnter = (e: DragEvent<HTMLElement>) => {
+    e.preventDefault();
+    if (!Array.from(e.dataTransfer.types).includes("Files")) return;
+    farewellImageDragDepthRef.current += 1;
+    setFarewellImageZoneActive(true);
+  };
+
+  const onFarewellImageDragLeave = (e: DragEvent<HTMLElement>) => {
+    e.preventDefault();
+    farewellImageDragDepthRef.current -= 1;
+    if (farewellImageDragDepthRef.current <= 0) {
+      farewellImageDragDepthRef.current = 0;
+      setFarewellImageZoneActive(false);
+    }
+  };
+
+  const onFarewellImageDragOver = (e: DragEvent<HTMLElement>) => {
     e.preventDefault();
     try {
       e.dataTransfer.dropEffect = "copy";
@@ -3943,12 +4700,201 @@ export function DashboardGuildPageClient({
   );
   const viewerName = bootstrap?.viewer?.name || "Пользователь";
   const viewerAvatarUrl = bootstrap?.viewer?.avatarUrl ?? null;
-  const toolbarButtonClass = (type: PickerType) =>
-    `inline-flex size-8 shrink-0 cursor-pointer items-center justify-center rounded-full ${GLASS_TOOLBAR_HIT_TRANSITION} ${
-      openPicker === type
+  const toolbarIconInteractionClass = `${GLASS_TOOLBAR_HIT_TRANSITION} text-zinc-400 hover:bg-white/[0.08] hover:text-zinc-200 active:bg-white/[0.11] active:text-zinc-100`;
+  const toolbarIconGroupInteractionClass = `${GLASS_TOOLBAR_HIT_TRANSITION} text-zinc-400 group-hover:bg-white/[0.08] group-hover:text-zinc-200 group-active:bg-white/[0.11] group-active:text-zinc-100`;
+  const toolbarButtonClass = (
+    type: PickerType,
+    pickerScope?: "welcome" | "welcomeDm" | "farewell" | "embed" | "imageCardTitle" | "imageCardSubtitle"
+  ) =>
+    `inline-flex h-7 w-7 shrink-0 cursor-pointer items-center justify-center rounded-full ${GLASS_TOOLBAR_HIT_TRANSITION} ${
+      insertPickerType === type && (pickerScope ? insertPickerSurface === pickerScope : true)
         ? "bg-white/14 text-zinc-50 shadow-[inset_0_1px_0_rgba(255,255,255,0.18)]"
-        : "text-zinc-400 hover:bg-white/[0.08] hover:text-zinc-200"
+        : toolbarIconInteractionClass
     }`;
+  const insertPickerPortal =
+    pickerPortalReady &&
+    insertPickerType &&
+    pickerPanelLayout &&
+    (insertPickerSurface === "welcome" ||
+      insertPickerSurface === "welcomeDm" ||
+      insertPickerSurface === "farewell" ||
+      insertPickerSurface === "embed" ||
+      insertPickerSurface === "imageCardTitle" ||
+      insertPickerSurface === "imageCardSubtitle")
+      ? createPortal(
+          <div
+            className="fixed z-[270] isolation-isolate"
+            style={{
+              left: `${pickerPanelLayout.left}px`,
+              bottom: `${pickerPanelLayout.bottom}px`,
+              width: `${pickerPanelLayout.width}px`,
+            }}
+          >
+            <div
+              ref={pickerPanelRef}
+              onMouseDown={(e) => e.stopPropagation()}
+              className="ds-liquid-list w-full rounded-xl p-2"
+              style={{
+                background: "rgba(18, 22, 36, 0.42)",
+                backdropFilter: "blur(20px)",
+                WebkitBackdropFilter: "blur(20px)",
+                border: "1px solid rgba(255,255,255,0.12)",
+                boxShadow: "0 16px 48px rgba(0,0,0,0.35)",
+              }}
+            >
+              <input
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                placeholder={`Поиск: ${getTitleByType(insertPickerType)}`}
+                className="ds-input mb-2.5 text-sm"
+                aria-label={`Поиск: ${getTitleByType(insertPickerType)}`}
+              />
+              {insertPickerType === "emoji" ? (
+                resourcesLoading ? (
+                  <p className="py-8 text-center text-[13px] text-zinc-500">Загрузка…</p>
+                ) : resources.errors?.emojis ? (
+                  <p
+                    className="py-8 text-center text-[13px] text-amber-400/90"
+                    title={resources.errors.emojis}
+                    role="status"
+                  >
+                    Эмодзи не загрузились
+                  </p>
+                ) : pickerItems.length === 0 ? (
+                  <p className="py-8 text-center text-[13px] text-zinc-500">Нет эмодзи</p>
+                ) : (
+                  <div
+                    className="grid grid-cols-7 gap-1 overflow-y-auto p-0.5 pr-1"
+                    style={{
+                      maxHeight: Math.max(
+                        96,
+                        pickerPanelLayout.maxHeight - 80
+                      ),
+                    }}
+                  >
+                    {pickerItems.map((item) => (
+                      <button
+                        key={item.id}
+                        type="button"
+                        title={item.label}
+                        onMouseDown={(e) => e.preventDefault()}
+                        onClick={() => handlePick(item)}
+                        className="ds-liquid-list-item flex h-9 w-9 items-center justify-center rounded-md text-zinc-200 hover:bg-white/[0.08]"
+                      >
+                        {item.imageUrl ? (
+                          <img
+                            src={item.imageUrl}
+                            alt=""
+                            aria-hidden="true"
+                            className="h-6 w-6 rounded-sm object-cover"
+                          />
+                        ) : (
+                          <span className="text-lg leading-none">{item.label}</span>
+                        )}
+                      </button>
+                    ))}
+                  </div>
+                )
+              ) : insertPickerType === "variable" ? (
+                pickerItems.length === 0 ? (
+                  <p className="py-8 text-center text-[13px] text-zinc-500">
+                    Нет переменных
+                  </p>
+                ) : (
+                  <div
+                    className="space-y-0.5 overflow-y-auto p-0.5 pr-0.5"
+                    style={{
+                      maxHeight: Math.max(
+                        96,
+                        pickerPanelLayout.maxHeight - 80
+                      ),
+                    }}
+                    role="listbox"
+                    aria-label="Переменные сообщения"
+                  >
+                    {pickerItems.map((item) => (
+                      <button
+                        key={item.id}
+                        type="button"
+                        role="option"
+                        onMouseDown={(e) => e.preventDefault()}
+                        onClick={() => handlePick(item)}
+                        className="ds-liquid-list-item flex min-h-[2.75rem] w-full items-start gap-3 rounded-lg px-3 py-2.5 text-left text-sm text-zinc-200 hover:bg-white/[0.08]"
+                      >
+                        {item.variableIcon ? (
+                          <VariablePickerIcon kind={item.variableIcon} />
+                        ) : null}
+                        <div className="min-w-0 flex-1">
+                          <div className="text-[13px] font-normal leading-snug text-zinc-100">
+                            {item.label}
+                          </div>
+                          {item.variableSubtitle ? (
+                            <p className="welcome-help-text mt-0.5">{item.variableSubtitle}</p>
+                          ) : null}
+                        </div>
+                        <code className="mt-0.5 shrink-0 self-start rounded-md border border-white/10 bg-zinc-950/45 px-2 py-1 font-mono text-[10px] leading-none tracking-wide text-zinc-400">
+                          {item.insert}
+                        </code>
+                      </button>
+                    ))}
+                  </div>
+                )
+              ) : resourcesLoading ? (
+                <p className="py-8 text-center text-[13px] text-zinc-500">Загрузка…</p>
+              ) : pickerItems.length === 0 ? (
+                <p className="py-8 text-center text-[13px] text-zinc-500">
+                  {insertPickerType === "channel" ? "Нет каналов" : "Нет ролей"}
+                </p>
+              ) : (
+                <div
+                  className="space-y-0.5 overflow-y-auto p-0.5"
+                  style={{
+                    maxHeight: Math.max(
+                      96,
+                      pickerPanelLayout.maxHeight - 80
+                    ),
+                  }}
+                >
+                  {pickerItems.map((item) => (
+                    <button
+                      key={item.id}
+                      type="button"
+                      onMouseDown={(e) => e.preventDefault()}
+                      onClick={() => handlePick(item)}
+                      className="ds-liquid-list-item flex min-h-[2.75rem] w-full items-center justify-between gap-3 rounded-lg px-3 py-2.5 text-left text-sm text-zinc-200 hover:bg-white/[0.08]"
+                    >
+                      {insertPickerType === "channel" ? (
+                        <>
+                          <span className="min-w-0 truncate font-medium text-zinc-100">
+                            #{item.label}
+                          </span>
+                          {item.meta ? (
+                            <span className="welcome-help-text shrink-0 tabular-nums">
+                              {item.meta}
+                            </span>
+                          ) : null}
+                        </>
+                      ) : (
+                        <span className="flex min-w-0 items-center gap-2.5">
+                          <span
+                            className="h-2 w-2 shrink-0 rounded-full ring-1 ring-white/25"
+                            style={{
+                              backgroundColor: discordRoleDotFill(item.roleColor),
+                            }}
+                            aria-hidden
+                          />
+                          <span className="truncate text-zinc-100">{item.label}</span>
+                        </span>
+                      )}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>,
+          document.body
+        )
+      : null;
 
   return (
     <main className="flex min-h-0 min-w-0 flex-1 flex-col p-6 pb-28 text-white">
@@ -4010,7 +4956,7 @@ export function DashboardGuildPageClient({
             >
             <nav className="flex flex-col gap-0.5" aria-label="Навигация по разделам">
               {SECTION_ITEMS.map(({ id, navLabel }) =>
-                id === "welcome" ? (
+                id === "welcome" || id === "farewell" ? (
                   <div
                     key={id}
                     className={`flex w-full items-center gap-1 rounded-lg pr-1.5 transition focus-within:outline-none ${
@@ -4036,13 +4982,18 @@ export function DashboardGuildPageClient({
                     </button>
                     <CompactSwitch
                       size="sidebar"
-                      checked={welcomeEnabled}
+                      checked={id === "welcome" ? welcomeEnabled : farewellEnabled}
                       onCheckedChange={(next) => {
-                        setWelcomeEnabled(next);
-                        setActiveSection("welcome");
+                        if (id === "welcome") {
+                          setWelcomeEnabled(next);
+                          setActiveSection("welcome");
+                          return;
+                        }
+                        setFarewellEnabled(next);
+                        setActiveSection("farewell");
                       }}
-                      title={welcomeModuleCopy.sidebarWelcomeToggleAria}
-                      aria-label={welcomeModuleCopy.sidebarWelcomeToggleAria}
+                      title={id === "welcome" ? welcomeModuleCopy.sidebarWelcomeToggleAria : "Включить прощание"}
+                      aria-label={id === "welcome" ? welcomeModuleCopy.sidebarWelcomeToggleAria : "Включить прощание"}
                       className="self-center motion-reduce:transition-none"
                     />
                   </div>
@@ -4157,187 +5108,67 @@ export function DashboardGuildPageClient({
                       data-welcome-block="composer"
                       className="welcome-settings-module overflow-hidden rounded-2xl ring-1 ring-white/[0.08] shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]"
                     >
-                      <div
-                        ref={pickerAreaRef}
-                        className="relative overflow-visible border-b border-white/[0.06] bg-white/[0.02]"
-                        role="group"
-                        aria-labelledby="welcome-message-label"
-                      >
-                        <div className="flex flex-col gap-2.5 px-3 pb-2 pt-3 sm:flex-row sm:items-start sm:justify-between sm:gap-4 sm:px-3.5 sm:pb-2.5 sm:pt-3.5">
-                          <div className="min-w-0 pr-2">
-                            <p className="ds-kicker" id="welcome-message-label">
-                              Сообщение приветствия
-                            </p>
-                            <p className="welcome-help-text mt-0.5">
-                              Будет отправлено над стилем приветствия
-                            </p>
-                          </div>
-                          <GlassIconSegmentedGroup
-                            variant="tabs"
-                            className="sm:mt-0.5"
-                            value={messageEditorMode}
-                            onValueChange={(next) =>
-                              setMessageEditorMode(next as WelcomeMessageEditorMode)
-                            }
-                            ariaLabel="Режим редактора: визуальный или исходный текст"
-                            options={[
-                              {
-                                value: "preview",
-                                title: "Визуальный редактор",
-                                ariaLabel: "Визуальный редактор",
-                                label: <IconWelcomePreviewMode className="h-4 w-4" />,
-                              },
-                              {
-                                value: "raw",
-                                title: "Исходный текст",
-                                ariaLabel: "Исходный текст",
-                                label: <IconWelcomeRawMode className="h-4 w-4" />,
-                              },
-                            ]}
-                          />
-                        </div>
-                        <div className="relative min-h-28 px-3 pb-3 sm:px-3.5 sm:pb-3.5">
-                          <input
-                            ref={textImageInputRef}
-                            type="file"
-                            accept="image/*"
-                            onChange={handleTextImageInput}
-                            className="hidden"
-                          />
-                          {messageEditorMode === "raw" ? (
-                            <textarea
-                              ref={textareaRef}
-                              value={message}
-                              onChange={(e) => {
-                                rawInsertCaretRef.current = null;
-                                setMessage(e.target.value);
-                                scheduleWelcomeHistoryDebounced();
-                              }}
-                              onBlur={() => flushWelcomeHistoryDebouncedNow()}
-                              className="min-h-28 w-full resize-none overflow-hidden rounded-none border-0 bg-transparent px-0.5 py-2 pb-12 text-[15px] leading-relaxed text-zinc-200 shadow-none outline-none focus-visible:ring-0 focus-visible:ring-offset-0"
-                              aria-labelledby="welcome-message-label"
-                              spellCheck={false}
-                            />
-                          ) : (
-                            <div
-                              ref={previewEditorRef}
-                              role="textbox"
-                              aria-multiline="true"
-                              aria-labelledby="welcome-message-label"
-                              contentEditable
-                              suppressContentEditableWarning
-                              spellCheck={false}
-                              className="min-h-28 w-full whitespace-pre-wrap break-words px-0.5 py-2 pb-12 text-[15px] leading-relaxed text-zinc-200 outline-none [&_.welcome-interactive-token]:select-all"
-                              onCopy={handleWelcomeRichCopy}
-                              onCut={handleWelcomeRichCut}
-                              onDoubleClick={handleWelcomeRichDoubleClick}
-                              onInput={handleWelcomeRichInput}
-                              onCompositionStart={() => {
-                                welcomeRichComposeRef.current = true;
-                              }}
-                              onCompositionEnd={() => {
-                                welcomeRichComposeRef.current = false;
-                                handleWelcomeRichInput();
-                              }}
-                              onPaste={handleWelcomeRichPaste}
-                              onKeyDown={handleWelcomeRichKeyDown}
-                              onBlur={() => {
-                                flushWelcomeHistoryDebouncedNow();
-                                setPreviewEditorSyncSeq((n) => n + 1);
-                              }}
-                            />
-                          )}
-                          <div className="pointer-events-none absolute bottom-3.5 right-3.5 z-10 flex items-center justify-end gap-1.5">
-                            {welcomeStyle === "text" ? (
-                              <button
-                                type="button"
-                                aria-label={textImageDataUrl ? "Заменить изображение сообщения" : "Добавить изображение к сообщению"}
-                                title={textImageDataUrl ? "Заменить изображение сообщения" : "Добавить изображение к сообщению"}
-                                onMouseDown={(e) => e.preventDefault()}
-                                onClick={() => textImageInputRef.current?.click()}
-                                className="pointer-events-auto inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-white/[0.09] bg-zinc-950/42 text-zinc-300 shadow-[0_8px_32px_rgba(0,0,0,0.4),0_2px_12px_rgba(0,0,0,0.2)] backdrop-blur-2xl backdrop-saturate-150 transition hover:bg-zinc-900/55 hover:text-zinc-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)] focus-visible:ring-offset-2 focus-visible:ring-offset-[rgba(9,9,15,0.96)]"
-                              >
-                                <IconWelcomeImagePlaceholder className="h-4 w-4" />
-                              </button>
-                            ) : null}
-                            <div
-                              className="pointer-events-auto flex h-9 items-center gap-0.5 rounded-full border border-white/[0.09] bg-zinc-950/42 px-1.5 py-1.5 shadow-[0_8px_32px_rgba(0,0,0,0.4),0_2px_12px_rgba(0,0,0,0.2)] backdrop-blur-2xl backdrop-saturate-150"
-                              role="toolbar"
-                              aria-label="Вставка в сообщение"
-                            >
-                              {(["emoji", "channel", "role", "variable"] as const).map((type) => (
-                                <div
-                                  key={type}
-                                  ref={(el) => {
-                                    welcomePickerAnchorRefs.current[type] = el;
-                                  }}
-                                  className="relative"
-                                >
-                                  <button
-                                    type="button"
-                                    aria-label={getTitleByType(type)}
-                                    title={getTitleByType(type)}
-                                    aria-pressed={openPicker === type}
-                                    onMouseDown={(e) => {
-                                      captureWelcomeInsertAnchor();
-                                      e.preventDefault();
-                                    }}
-                                    onClick={() => {
-                                      setInsertPickerSurface("welcome");
-                                      setOpenPicker((prev) => (prev === type ? null : type));
-                                    }}
-                                    className={toolbarButtonClass(type)}
-                                  >
-                                    {insertToolbarIcon(type)}
-                                  </button>
-                                </div>
-                              ))}
-                            </div>
-                          </div>
-                        </div>
-                        {welcomeStyle === "text" && textImageDataUrl ? (
-                          <div className="px-3 pb-3 sm:px-3.5 sm:pb-3.5">
-                            <div
-                              className={`group relative mt-1 aspect-[16/10] w-full overflow-hidden rounded-xl bg-black/[0.16] shadow-[inset_0_1px_0_rgba(255,255,255,0.04)] ring-1 ring-white/[0.06] transition ${
-                                textImageZoneActive ? "ring-2 ring-white/[0.14] ring-inset" : ""
-                              }`}
-                              onDragEnter={onWelcomeTextImageDragEnter}
-                              onDragLeave={onWelcomeTextImageDragLeave}
-                              onDragOver={onWelcomeTextImageDragOver}
-                              onDrop={handleTextImageDrop}
-                            >
-                              <div className="relative flex h-full w-full cursor-default items-center justify-center p-2 sm:p-3">
-                                <img
-                                  src={textImageDataUrl}
-                                  alt="Превью изображения для приветствия"
-                                  className="max-h-full w-full max-w-full object-contain drop-shadow-sm"
-                                />
-                              </div>
-                              <div className="pointer-events-none absolute left-2.5 top-2.5 flex justify-start">
-                                <button
-                                  type="button"
-                                  aria-label="Удалить изображение"
-                                  title="Удалить изображение"
-                                  onClick={() => {
-                                    setTextImageDataUrl("");
-                                    setTextImageUploadError("");
-                                  }}
-                                  className="pointer-events-auto inline-flex size-8 shrink-0 items-center justify-center rounded-full border border-white/[0.09] bg-zinc-950/52 text-zinc-300 shadow-[0_8px_32px_rgba(0,0,0,0.35),0_2px_12px_rgba(0,0,0,0.2)] backdrop-blur-2xl backdrop-saturate-150 transition hover:bg-zinc-900/65 hover:text-zinc-100"
-                                >
-                                  <IconTrashCompact className="h-4 w-4" />
-                                </button>
-                              </div>
-                            </div>
-                          </div>
-                        ) : null}
-                        {welcomeStyle === "text" && textImageUploadError ? (
-                          <p className="px-3 pb-3 text-xs text-rose-300 sm:px-3.5 sm:pb-3.5">
-                            {textImageUploadError}
-                          </p>
-                        ) : null}
-                      </div>
+                      {renderSharedMessageEditor({
+                        sectionDataBlock: "composer",
+                        pickerAreaRef,
+                        labelId: "welcome-message-label",
+                        title: "Сообщение приветствия",
+                        helper: "Будет отправлено над стилем приветствия",
+                        mode: messageEditorMode,
+                        onModeChange: (mode) => setMessageEditorMode(mode),
+                        rawRef: textareaRef,
+                        value: message,
+                        onRawChange: (next) => {
+                          rawInsertCaretRef.current = null;
+                          setMessage(next);
+                          scheduleWelcomeHistoryDebounced();
+                        },
+                        onRawBlur: () => flushWelcomeHistoryDebouncedNow(),
+                        previewRef: previewEditorRef,
+                        onPreviewCopy: handleWelcomeRichCopy,
+                        onPreviewCut: handleWelcomeRichCut,
+                        onPreviewDoubleClick: handleWelcomeRichDoubleClick,
+                        onPreviewInput: handleWelcomeRichInput,
+                        onPreviewCompositionStart: () => {
+                          welcomeRichComposeRef.current = true;
+                        },
+                        onPreviewCompositionEnd: () => {
+                          welcomeRichComposeRef.current = false;
+                          handleWelcomeRichInput();
+                        },
+                        onPreviewPaste: handleWelcomeRichPaste,
+                        onPreviewKeyDown: handleWelcomeRichKeyDown,
+                        onPreviewBlur: () => {
+                          flushWelcomeHistoryDebouncedNow();
+                          setPreviewEditorSyncSeq((n) => n + 1);
+                        },
+                        showImageButton: welcomeStyle === "text",
+                        imageButtonAriaAdd: "Добавить изображение к сообщению",
+                        imageButtonAriaReplace: "Заменить изображение сообщения",
+                        imageInputRef: textImageInputRef,
+                        onImageInput: handleTextImageInput,
+                        onImageButtonClick: () => textImageInputRef.current?.click(),
+                        toolbarTypes: ["emoji", "channel", "role", "variable"],
+                        toolbarKeyPrefix: "welcome",
+                        toolbarAnchorsRef: welcomePickerAnchorRefs,
+                        pickerScope: "welcome",
+                        captureInsertAnchor: captureWelcomeInsertAnchor,
+                        imageDataUrl: welcomeStyle === "text" ? textImageDataUrl : "",
+                        imagePreviewAlt: "Превью изображения для приветствия",
+                        imageZoneActive: textImageZoneActive,
+                        onImageDragEnter: onWelcomeTextImageDragEnter,
+                        onImageDragLeave: onWelcomeTextImageDragLeave,
+                        onImageDragOver: onWelcomeTextImageDragOver,
+                        onImageDrop: handleTextImageDrop,
+                        onImageRemove: () => {
+                          setTextImageDataUrl("");
+                          setTextImageUploadError("");
+                        },
+                        imageUploadError: welcomeStyle === "text" ? textImageUploadError : "",
+                        wrapInModule: false,
+                      })}
 
-                      <div className="border-t border-white/[0.05] bg-white/[0.015] px-3 py-3 sm:px-3.5 sm:py-3.5">
+                      <div className="border-t border-white/[0.05] bg-white/[0.015] px-4 py-4 sm:px-5 sm:py-4">
                       <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between sm:gap-4">
                         <div className="min-w-0">
                           <p className="ds-kicker">Стиль приветствия</p>
@@ -4495,16 +5326,22 @@ export function DashboardGuildPageClient({
                                           type="button"
                                           aria-label={getTitleByType(type)}
                                           title={getTitleByType(type)}
-                                          aria-pressed={openPicker === type}
+                                          aria-pressed={
+                                            insertPickerType === type &&
+                                            insertPickerSurface === "embed"
+                                          }
                                           onMouseDown={(e) => {
                                             captureEmbedDescriptionInsertAnchor();
                                             e.preventDefault();
                                           }}
                                           onClick={() => {
+                                            const isActiveInScope =
+                                              insertPickerSurface === "embed" &&
+                                              insertPickerType === type;
                                             setInsertPickerSurface("embed");
-                                            setOpenPicker((prev) => (prev === type ? null : type));
+                                            setInsertPickerType(isActiveInScope ? null : type);
                                           }}
-                                          className={toolbarButtonClass(type)}
+                                          className={toolbarButtonClass(type, "embed")}
                                         >
                                           {insertToolbarIcon(type)}
                                         </button>
@@ -4759,7 +5596,11 @@ export function DashboardGuildPageClient({
                                       type="button"
                                       aria-label={getTitleByType(type)}
                                       title={getTitleByType(type)}
-                                      aria-pressed={openPicker === type}
+                                      aria-pressed={
+                                        insertPickerType === type &&
+                                        (insertPickerSurface === "imageCardTitle" ||
+                                          insertPickerSurface === "imageCardSubtitle")
+                                      }
                                       onMouseDown={(e) => {
                                         captureImageCardInsertAnchor();
                                         e.preventDefault();
@@ -4769,10 +5610,18 @@ export function DashboardGuildPageClient({
                                           imageCardActiveField === "title"
                                             ? "imageCardTitle"
                                             : "imageCardSubtitle";
+                                        const isActiveInScope =
+                                          insertPickerSurface === surf &&
+                                          insertPickerType === type;
                                         setInsertPickerSurface(surf);
-                                        setOpenPicker((prev) => (prev === type ? null : type));
+                                        setInsertPickerType(isActiveInScope ? null : type);
                                       }}
-                                      className={toolbarButtonClass(type)}
+                                      className={toolbarButtonClass(
+                                        type,
+                                        imageCardActiveField === "title"
+                                          ? "imageCardTitle"
+                                          : "imageCardSubtitle"
+                                      )}
                                     >
                                       {insertToolbarIcon(type)}
                                     </button>
@@ -5190,7 +6039,7 @@ export function DashboardGuildPageClient({
                                     }
                                     imageCardBgFileInputRef.current?.click();
                                   }}
-                                  className="absolute left-2 top-2 z-30 inline-flex size-8 items-center justify-center rounded-full border border-white/[0.14] bg-[rgba(14,14,18,0.55)] text-white/90 shadow-[0_8px_24px_rgba(0,0,0,0.35)] backdrop-blur-md transition hover:bg-[rgba(24,24,32,0.62)] hover:text-white disabled:opacity-45"
+                                  className="absolute right-2 top-2 z-30 inline-flex size-8 items-center justify-center rounded-full border border-white/[0.14] bg-[rgba(14,14,18,0.55)] text-white/90 shadow-[0_8px_24px_rgba(0,0,0,0.35)] backdrop-blur-md transition hover:bg-[rgba(24,24,32,0.62)] hover:text-white disabled:opacity-45"
                                 >
                                   {imageCardBgUploadBusy ? (
                                     <span
@@ -5386,192 +6235,69 @@ export function DashboardGuildPageClient({
                     </section>
                     ) : null}
 
-                    {welcomeDeliveryMode === "dm" || welcomeDeliveryMode === "both" ? (
-                    <section
-                      data-welcome-block="dm-composer"
-                      className="welcome-settings-module overflow-hidden rounded-2xl ring-1 ring-white/[0.08] shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]"
-                    >
-                      <div
-                        ref={welcomeDmPickerAreaRef}
-                        className="relative overflow-visible bg-white/[0.02]"
-                        role="group"
-                        aria-labelledby="welcome-dm-message-label"
-                      >
-                        <div className="flex flex-col gap-2.5 px-3 pb-2 pt-3 sm:flex-row sm:items-start sm:justify-between sm:gap-4 sm:px-3.5 sm:pb-2.5 sm:pt-3.5">
-                          <div className="min-w-0 pr-2">
-                            <p className="ds-kicker" id="welcome-dm-message-label">
-                              {welcomeModuleCopy.deliveryDmMessageLabel}
-                            </p>
-                            <p className="welcome-help-text mt-0.5 max-w-prose">
-                              {welcomeModuleCopy.deliveryDmPrivacyNote}
-                            </p>
-                          </div>
-                          <GlassIconSegmentedGroup
-                            variant="tabs"
-                            className="sm:mt-0.5"
-                            value={dmMessageEditorMode}
-                            onValueChange={(next) => {
-                              const mode = next as WelcomeMessageEditorMode;
-                              if (mode === "preview") {
-                                setDmMessageEditorMode("preview");
-                                setDmPreviewEditorSyncSeq((n) => n + 1);
-                              } else {
-                                setDmMessageEditorMode("raw");
-                              }
-                            }}
-                            ariaLabel="Режим редактора: визуальный или исходный текст"
-                            options={[
-                              {
-                                value: "preview",
-                                title: "Визуальный редактор",
-                                ariaLabel: "Визуальный редактор",
-                                label: <IconWelcomePreviewMode className="h-4 w-4" />,
-                              },
-                              {
-                                value: "raw",
-                                title: "Исходный текст",
-                                ariaLabel: "Исходный текст",
-                                label: <IconWelcomeRawMode className="h-4 w-4" />,
-                              },
-                            ]}
-                          />
-                        </div>
-                        <div className="relative min-h-28 px-3 pb-3 sm:px-3.5 sm:pb-3.5">
-                          <input
-                            ref={welcomeDmImageInputRef}
-                            type="file"
-                            accept="image/*"
-                            onChange={handleDmImageInput}
-                            className="hidden"
-                          />
-                          {dmMessageEditorMode === "raw" ? (
-                            <textarea
-                              ref={welcomeDmTextareaRef}
-                              value={welcomeDmMessage}
-                              onChange={(e) => {
-                                dmRawInsertCaretRef.current = null;
-                                setWelcomeDmMessage(e.target.value);
-                              }}
-                              className="min-h-28 w-full resize-none overflow-hidden rounded-none border-0 bg-transparent px-0.5 py-2 pb-12 text-[15px] leading-relaxed text-zinc-200 shadow-none outline-none focus-visible:ring-0 focus-visible:ring-offset-0"
-                              aria-labelledby="welcome-dm-message-label"
-                              spellCheck={false}
-                            />
-                          ) : (
-                            <div
-                              ref={dmPreviewEditorRef}
-                              role="textbox"
-                              aria-multiline="true"
-                              aria-labelledby="welcome-dm-message-label"
-                              contentEditable
-                              suppressContentEditableWarning
-                              spellCheck={false}
-                              className="min-h-28 w-full whitespace-pre-wrap break-words px-0.5 py-2 pb-12 text-[15px] leading-relaxed text-zinc-200 outline-none [&_.welcome-interactive-token]:select-all"
-                              onCopy={handleDmRichCopy}
-                              onCut={handleDmRichCut}
-                              onDoubleClick={handleDmRichDoubleClick}
-                              onInput={handleDmRichInput}
-                              onCompositionStart={() => {
-                                welcomeDmRichComposeRef.current = true;
-                              }}
-                              onCompositionEnd={() => {
-                                welcomeDmRichComposeRef.current = false;
-                                handleDmRichInput();
-                              }}
-                              onPaste={handleDmRichPaste}
-                              onKeyDown={handleDmRichKeyDown}
-                              onBlur={() => setDmPreviewEditorSyncSeq((n) => n + 1)}
-                            />
-                          )}
-                          <div className="pointer-events-none absolute bottom-3.5 right-3.5 z-10 flex items-center justify-end gap-1.5">
-                            <button
-                              type="button"
-                              aria-label={welcomeDmImageDataUrl ? "Заменить изображение для ЛС" : "Добавить изображение для ЛС"}
-                              title={welcomeDmImageDataUrl ? "Заменить изображение для ЛС" : "Добавить изображение для ЛС"}
-                              onMouseDown={(e) => e.preventDefault()}
-                              onClick={() => welcomeDmImageInputRef.current?.click()}
-                              className="pointer-events-auto inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-white/[0.09] bg-zinc-950/42 text-zinc-300 shadow-[0_8px_32px_rgba(0,0,0,0.4),0_2px_12px_rgba(0,0,0,0.2)] backdrop-blur-2xl backdrop-saturate-150 transition hover:bg-zinc-900/55 hover:text-zinc-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)] focus-visible:ring-offset-2 focus-visible:ring-offset-[rgba(9,9,15,0.96)]"
-                            >
-                              <IconWelcomeImagePlaceholder className="h-4 w-4" />
-                            </button>
-                            <div
-                              className="pointer-events-auto flex h-9 items-center gap-0.5 rounded-full border border-white/[0.09] bg-zinc-950/42 px-1.5 py-1.5 shadow-[0_8px_32px_rgba(0,0,0,0.4),0_2px_12px_rgba(0,0,0,0.2)] backdrop-blur-2xl backdrop-saturate-150"
-                              role="toolbar"
-                              aria-label="Вставка в сообщение"
-                            >
-                              {(["emoji", "channel", "variable"] as const).map((type) => (
-                                <div
-                                  key={`dm-${type}`}
-                                  ref={(el) => {
-                                    welcomeDmPickerAnchorRefs.current[type] = el;
-                                  }}
-                                  className="relative"
-                                >
-                                  <button
-                                    type="button"
-                                    aria-label={getTitleByType(type)}
-                                    title={getTitleByType(type)}
-                                    aria-pressed={openPicker === type && insertPickerSurface === "welcomeDm"}
-                                    onMouseDown={(e) => {
-                                      captureDmInsertAnchor();
-                                      e.preventDefault();
-                                    }}
-                                    onClick={() => {
-                                      setInsertPickerSurface("welcomeDm");
-                                      setOpenPicker((prev) => (prev === type ? null : type));
-                                    }}
-                                    className={toolbarButtonClass(type)}
-                                  >
-                                    {insertToolbarIcon(type)}
-                                  </button>
-                                </div>
-                              ))}
-                            </div>
-                          </div>
-                        </div>
-                        {welcomeDmImageDataUrl ? (
-                          <div className="px-3 pb-3 sm:px-3.5 sm:pb-3.5">
-                            <div
-                              className={`group relative mt-1 aspect-[16/10] w-full overflow-hidden rounded-xl bg-black/[0.16] shadow-[inset_0_1px_0_rgba(255,255,255,0.04)] ring-1 ring-white/[0.06] transition ${
-                                welcomeDmImageZoneActive ? "ring-2 ring-white/[0.14] ring-inset" : ""
-                              }`}
-                              onDragEnter={onWelcomeDmImageDragEnter}
-                              onDragLeave={onWelcomeDmImageDragLeave}
-                              onDragOver={onWelcomeDmImageDragOver}
-                              onDrop={handleDmImageDrop}
-                            >
-                              <div className="relative flex h-full w-full cursor-default items-center justify-center p-2 sm:p-3">
-                                <img
-                                  src={welcomeDmImageDataUrl}
-                                  alt="Превью изображения для ЛС-приветствия"
-                                  className="max-h-full w-full max-w-full object-contain drop-shadow-sm"
-                                />
-                              </div>
-                              <div className="pointer-events-none absolute left-2.5 top-2.5 flex justify-start">
-                                <button
-                                  type="button"
-                                  aria-label="Удалить изображение"
-                                  title="Удалить изображение"
-                                  onClick={() => {
-                                    setWelcomeDmImageDataUrl("");
-                                    setWelcomeDmImageFilename("");
-                                    setWelcomeDmImageUploadError("");
-                                  }}
-                                  className="pointer-events-auto inline-flex size-8 shrink-0 items-center justify-center rounded-full border border-white/[0.09] bg-zinc-950/52 text-zinc-300 shadow-[0_8px_32px_rgba(0,0,0,0.35),0_2px_12px_rgba(0,0,0,0.2)] backdrop-blur-2xl backdrop-saturate-150 transition hover:bg-zinc-900/65 hover:text-zinc-100"
-                                >
-                                  <IconTrashCompact className="h-4 w-4" />
-                                </button>
-                              </div>
-                            </div>
-                          </div>
-                        ) : null}
-                        {welcomeDmImageUploadError ? (
-                          <p className="px-3 pb-3 text-xs text-rose-300 sm:px-3.5 sm:pb-3.5">
-                            {welcomeDmImageUploadError}
-                          </p>
-                        ) : null}
-                      </div>
-                    </section>
-                    ) : null}
+                    {welcomeDeliveryMode === "dm" || welcomeDeliveryMode === "both"
+                      ? renderSharedMessageEditor({
+                          sectionDataBlock: "dm-composer",
+                          pickerAreaRef: welcomeDmPickerAreaRef,
+                          labelId: "welcome-dm-message-label",
+                          title: welcomeModuleCopy.deliveryDmMessageLabel,
+                          helper: welcomeModuleCopy.deliveryDmPrivacyNote,
+                          mode: dmMessageEditorMode,
+                          onModeChange: (mode) => {
+                            if (mode === "preview") {
+                              setDmMessageEditorMode("preview");
+                              setDmPreviewEditorSyncSeq((n) => n + 1);
+                            } else {
+                              setDmMessageEditorMode("raw");
+                            }
+                          },
+                          rawRef: welcomeDmTextareaRef,
+                          value: welcomeDmMessage,
+                          onRawChange: (next) => {
+                            dmRawInsertCaretRef.current = null;
+                            setWelcomeDmMessage(next);
+                          },
+                          previewRef: dmPreviewEditorRef,
+                          onPreviewCopy: handleDmRichCopy,
+                          onPreviewCut: handleDmRichCut,
+                          onPreviewDoubleClick: handleDmRichDoubleClick,
+                          onPreviewInput: handleDmRichInput,
+                          onPreviewCompositionStart: () => {
+                            welcomeDmRichComposeRef.current = true;
+                          },
+                          onPreviewCompositionEnd: () => {
+                            welcomeDmRichComposeRef.current = false;
+                            handleDmRichInput();
+                          },
+                          onPreviewPaste: handleDmRichPaste,
+                          onPreviewKeyDown: handleDmRichKeyDown,
+                          onPreviewBlur: () => setDmPreviewEditorSyncSeq((n) => n + 1),
+                          showImageButton: true,
+                          imageButtonAriaAdd: "Добавить изображение для ЛС",
+                          imageButtonAriaReplace: "Заменить изображение для ЛС",
+                          imageInputRef: welcomeDmImageInputRef,
+                          onImageInput: handleDmImageInput,
+                          onImageButtonClick: () => welcomeDmImageInputRef.current?.click(),
+                          toolbarTypes: ["emoji", "channel", "variable"],
+                          toolbarKeyPrefix: "dm",
+                          toolbarAnchorsRef: welcomeDmPickerAnchorRefs,
+                          pickerScope: "welcomeDm",
+                          captureInsertAnchor: captureDmInsertAnchor,
+                          imageDataUrl: welcomeDmImageDataUrl,
+                          imagePreviewAlt: "Превью изображения для ЛС-приветствия",
+                          imageZoneActive: welcomeDmImageZoneActive,
+                          onImageDragEnter: onWelcomeDmImageDragEnter,
+                          onImageDragLeave: onWelcomeDmImageDragLeave,
+                          onImageDragOver: onWelcomeDmImageDragOver,
+                          onImageDrop: handleDmImageDrop,
+                          onImageRemove: () => {
+                            setWelcomeDmImageDataUrl("");
+                            setWelcomeDmImageFilename("");
+                            setWelcomeDmImageUploadError("");
+                          },
+                          imageUploadError: welcomeDmImageUploadError,
+                        })
+                      : null}
 
                     <section
                       data-welcome-block="skip-bots"
@@ -5593,256 +6319,74 @@ export function DashboardGuildPageClient({
                       </div>
                     </section>
 
-                    <div
+                    <section
                       data-welcome-block="test-actions"
-                      className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between"
-                      role="group"
-                      aria-label={
-                        welcomeDeliveryMode === "dm"
-                          ? "Проверка приветствия в личных сообщениях"
-                          : welcomeDeliveryMode === "both"
-                            ? "Проверка приветствия в личных сообщениях и в канале"
-                            : "Проверка приветствия в канале"
-                      }
+                      className="welcome-settings-module px-4 py-4 sm:px-5 sm:py-4"
                     >
-                      <button
-                        type="button"
-                        onClick={handleSendTestWelcome}
-                        disabled={isSendingTest}
+                      <div
+                        className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between"
+                        role="group"
                         aria-label={
-                          isSendingTest
-                            ? "Отправка тестового сообщения"
-                            : welcomeDeliveryMode === "dm"
-                              ? "Отправить тестовое приветствие в личку текущему пользователю"
-                              : welcomeDeliveryMode === "both"
-                                ? "Отправить тестовое приветствие в личку и в выбранный канал"
-                                : "Отправить тестовое приветствие в выбранный канал"
-                        }
-                        className="inline-flex w-fit shrink-0 cursor-pointer items-center gap-1.5 rounded-full border border-white/[0.07] bg-white/[0.025] px-3 py-1.5 text-[12px] font-medium leading-tight text-zinc-400 shadow-none transition hover:border-white/[0.11] hover:bg-white/[0.05] hover:text-zinc-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)] focus-visible:ring-offset-2 focus-visible:ring-offset-[rgba(9,9,15,0.96)] disabled:cursor-not-allowed disabled:opacity-45"
-                      >
-                        <svg
-                          viewBox="0 0 24 24"
-                          className="h-3 w-3 shrink-0 opacity-70"
-                          fill="none"
-                          stroke="currentColor"
-                          strokeWidth="1.65"
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                          aria-hidden
-                        >
-                          <path d="M22 2 11 13M22 2l-7 20-4-9-9-4 20-7Z" />
-                        </svg>
-                        {isSendingTest ? "Отправка…" : "Отправить тест"}
-                      </button>
-                      <div className="flex min-w-0 flex-1 flex-col gap-0.5 sm:items-end sm:text-right">
-                        <p className="text-[11px] font-normal leading-snug text-zinc-500">
-                          {welcomeDeliveryMode === "dm"
-                            ? "Тест придёт вам в ЛС от бота (как новому участнику)"
+                          welcomeDeliveryMode === "dm"
+                            ? "Проверка приветствия в личных сообщениях"
                             : welcomeDeliveryMode === "both"
-                              ? "Тест придёт в ЛС и в выбранный канал"
-                              : "Проверить, как сообщение выглядит в Discord"}
-                        </p>
-                        {testSendStatus ? (
-                          <p
-                            role="status"
-                            className={`max-w-prose text-[11px] font-normal leading-snug sm:ml-auto ${
-                              testSendStatusTone === "success"
-                                ? "text-emerald-500/85"
-                                : testSendStatusTone === "error"
-                                  ? "text-rose-400/85"
-                                  : "text-zinc-500"
-                            }`}
+                              ? "Проверка приветствия в личных сообщениях и в канале"
+                              : "Проверка приветствия в канале"
+                        }
+                      >
+                        <button
+                          type="button"
+                          onClick={handleSendTestWelcome}
+                          disabled={isSendingTest}
+                          aria-label={
+                            isSendingTest
+                              ? "Отправка тестового сообщения"
+                              : welcomeDeliveryMode === "dm"
+                                ? "Отправить тестовое приветствие в личку текущему пользователю"
+                                : welcomeDeliveryMode === "both"
+                                  ? "Отправить тестовое приветствие в личку и в выбранный канал"
+                                  : "Отправить тестовое приветствие в выбранный канал"
+                          }
+                          className="inline-flex w-fit shrink-0 cursor-pointer items-center gap-1.5 rounded-full border border-white/[0.07] bg-white/[0.025] px-3 py-1.5 text-[12px] font-medium leading-tight text-zinc-400 shadow-none transition hover:border-white/[0.11] hover:bg-white/[0.05] hover:text-zinc-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)] focus-visible:ring-offset-2 focus-visible:ring-offset-[rgba(9,9,15,0.96)] disabled:cursor-not-allowed disabled:opacity-45"
+                        >
+                          <svg
+                            viewBox="0 0 24 24"
+                            className="h-3 w-3 shrink-0 opacity-70"
+                            fill="none"
+                            stroke="currentColor"
+                            strokeWidth="1.65"
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                            aria-hidden
                           >
-                            {testSendStatus}
+                            <path d="M22 2 11 13M22 2l-7 20-4-9-9-4 20-7Z" />
+                          </svg>
+                          {isSendingTest ? "Отправка…" : "Отправить тест"}
+                        </button>
+                        <div className="flex min-w-0 flex-1 flex-col gap-0.5 sm:items-end sm:text-right">
+                          <p className="text-[11px] font-normal leading-snug text-zinc-500">
+                            Проверить, как сообщение выглядит в Discord
                           </p>
-                        ) : null}
+                          {testSendStatus ? (
+                            <p
+                              role="status"
+                              className={`max-w-prose text-[11px] font-normal leading-snug sm:ml-auto ${
+                                testSendStatusTone === "success"
+                                  ? "text-emerald-500/85"
+                                  : testSendStatusTone === "error"
+                                    ? "text-rose-400/85"
+                                    : "text-zinc-500"
+                              }`}
+                            >
+                              {testSendStatus}
+                            </p>
+                          ) : null}
+                        </div>
                       </div>
-                    </div>
+                    </section>
                     </div>
 
-                    {pickerPortalReady &&
-                      (welcomeDeliveryMode === "channel" ||
-                        welcomeDeliveryMode === "dm" ||
-                        welcomeDeliveryMode === "both") &&
-                      openPicker &&
-                      pickerPanelLayout &&
-                      (welcomeStyle === "text" ||
-                        welcomeStyle === "embed" ||
-                        welcomeStyle === "imageCard")
-                      ? createPortal(
-                          <div
-                            className="fixed z-[270] isolation-isolate"
-                            style={{
-                              left: `${pickerPanelLayout.left}px`,
-                              bottom: `${pickerPanelLayout.bottom}px`,
-                              width: `${pickerPanelLayout.width}px`,
-                            }}
-                          >
-                            <div
-                              ref={pickerPanelRef}
-                              onMouseDown={(e) => e.stopPropagation()}
-                              className="ds-liquid-list w-full rounded-xl p-2"
-                              style={{
-                                background: "rgba(18, 22, 36, 0.42)",
-                                backdropFilter: "blur(20px)",
-                                WebkitBackdropFilter: "blur(20px)",
-                                border: "1px solid rgba(255,255,255,0.12)",
-                                boxShadow: "0 16px 48px rgba(0,0,0,0.35)",
-                              }}
-                            >
-                              <input
-                                value={search}
-                                onChange={(e) => setSearch(e.target.value)}
-                                placeholder={`Поиск: ${getTitleByType(openPicker)}`}
-                                className="ds-input mb-2.5 text-sm"
-                                aria-label={`Поиск: ${getTitleByType(openPicker)}`}
-                              />
-                              {openPicker === "emoji" ? (
-                                resourcesLoading ? (
-                                  <p className="py-8 text-center text-[13px] text-zinc-500">Загрузка…</p>
-                                ) : resources.errors?.emojis ? (
-                                  <p
-                                    className="py-8 text-center text-[13px] text-amber-400/90"
-                                    title={resources.errors.emojis}
-                                    role="status"
-                                  >
-                                    Эмодзи не загрузились
-                                  </p>
-                                ) : pickerItems.length === 0 ? (
-                                  <p className="py-8 text-center text-[13px] text-zinc-500">Нет эмодзи</p>
-                                ) : (
-                                  <div
-                                    className="grid grid-cols-7 gap-1 overflow-y-auto p-0.5 pr-1"
-                                    style={{
-                                      maxHeight: Math.max(
-                                        96,
-                                        pickerPanelLayout.maxHeight - 80
-                                      ),
-                                    }}
-                                  >
-                                    {pickerItems.map((item) => (
-                                      <button
-                                        key={item.id}
-                                        type="button"
-                                        title={item.label}
-                                        onMouseDown={(e) => e.preventDefault()}
-                                        onClick={() => handlePick(item)}
-                                        className="ds-liquid-list-item flex h-9 w-9 items-center justify-center rounded-md text-zinc-200 hover:bg-white/[0.08]"
-                                      >
-                                        {item.imageUrl ? (
-                                          <img
-                                            src={item.imageUrl}
-                                            alt=""
-                                            aria-hidden="true"
-                                            className="h-6 w-6 rounded-sm object-cover"
-                                          />
-                                        ) : (
-                                          <span className="text-lg leading-none">{item.label}</span>
-                                        )}
-                                      </button>
-                                    ))}
-                                  </div>
-                                )
-                              ) : openPicker === "variable" ? (
-                                pickerItems.length === 0 ? (
-                                  <p className="py-8 text-center text-[13px] text-zinc-500">
-                                    Нет переменных
-                                  </p>
-                                ) : (
-                                  <div
-                                    className="space-y-0.5 overflow-y-auto p-0.5 pr-0.5"
-                                    style={{
-                                      maxHeight: Math.max(
-                                        96,
-                                        pickerPanelLayout.maxHeight - 80
-                                      ),
-                                    }}
-                                    role="listbox"
-                                    aria-label="Переменные сообщения"
-                                  >
-                                    {pickerItems.map((item) => (
-                                      <button
-                                        key={item.id}
-                                        type="button"
-                                        role="option"
-                                        onMouseDown={(e) => e.preventDefault()}
-                                        onClick={() => handlePick(item)}
-                                        className="ds-liquid-list-item flex min-h-[2.75rem] w-full items-start gap-3 rounded-lg px-3 py-2.5 text-left text-sm text-zinc-200 hover:bg-white/[0.08]"
-                                      >
-                                        {item.variableIcon ? (
-                                          <VariablePickerIcon kind={item.variableIcon} />
-                                        ) : null}
-                                        <div className="min-w-0 flex-1">
-                                          <div className="text-[13px] font-normal leading-snug text-zinc-100">
-                                            {item.label}
-                                          </div>
-                                          {item.variableSubtitle ? (
-                                            <p className="welcome-help-text mt-0.5">{item.variableSubtitle}</p>
-                                          ) : null}
-                                        </div>
-                                        <code className="mt-0.5 shrink-0 self-start rounded-md border border-white/10 bg-zinc-950/45 px-2 py-1 font-mono text-[10px] leading-none tracking-wide text-zinc-400">
-                                          {item.insert}
-                                        </code>
-                                      </button>
-                                    ))}
-                                  </div>
-                                )
-                              ) : resourcesLoading ? (
-                                <p className="py-8 text-center text-[13px] text-zinc-500">Загрузка…</p>
-                              ) : pickerItems.length === 0 ? (
-                                <p className="py-8 text-center text-[13px] text-zinc-500">
-                                  {openPicker === "channel" ? "Нет каналов" : "Нет ролей"}
-                                </p>
-                              ) : (
-                                <div
-                                  className="space-y-0.5 overflow-y-auto p-0.5"
-                                  style={{
-                                    maxHeight: Math.max(
-                                      96,
-                                      pickerPanelLayout.maxHeight - 80
-                                    ),
-                                  }}
-                                >
-                                  {pickerItems.map((item) => (
-                                    <button
-                                      key={item.id}
-                                      type="button"
-                                      onMouseDown={(e) => e.preventDefault()}
-                                      onClick={() => handlePick(item)}
-                                      className="ds-liquid-list-item flex min-h-[2.75rem] w-full items-center justify-between gap-3 rounded-lg px-3 py-2.5 text-left text-sm text-zinc-200 hover:bg-white/[0.08]"
-                                    >
-                                      {openPicker === "channel" ? (
-                                        <>
-                                          <span className="min-w-0 truncate font-medium text-zinc-100">
-                                            #{item.label}
-                                          </span>
-                                          {item.meta ? (
-                                            <span className="welcome-help-text shrink-0 tabular-nums">
-                                              {item.meta}
-                                            </span>
-                                          ) : null}
-                                        </>
-                                      ) : (
-                                        <span className="flex min-w-0 items-center gap-2.5">
-                                          <span
-                                            className="h-2 w-2 shrink-0 rounded-full ring-1 ring-white/25"
-                                            style={{
-                                              backgroundColor: discordRoleDotFill(item.roleColor),
-                                            }}
-                                            aria-hidden
-                                          />
-                                          <span className="truncate text-zinc-100">{item.label}</span>
-                                        </span>
-                                      )}
-                                    </button>
-                                  ))}
-                                </div>
-                              )}
-                            </div>
-                          </div>,
-                          document.body
-                        )
-                      : null}
+                    {insertPickerPortal}
 
                     {!welcomeEnabled ? (
                       <>
@@ -5871,6 +6415,171 @@ export function DashboardGuildPageClient({
                         </div>
                       </>
                     ) : null}
+                    </div>
+                  </CollapsibleSettingsSection>
+                ) : activeSection === "farewell" ? (
+                  <CollapsibleSettingsSection
+                    sectionId="farewell-settings"
+                    headingDomId="section-heading"
+                    title={activeSectionMeta.heading}
+                    subtitle={activeSectionMeta.subtitle}
+                    defaultOpen
+                  >
+                    <div className="relative overflow-hidden rounded-2xl">
+                      <div
+                        className={`welcome-settings-stack${
+                          !farewellEnabled
+                            ? " pointer-events-none opacity-[0.5] saturate-[0.55] brightness-[0.72]"
+                            : ""
+                        }`}
+                      >
+                        <section className="welcome-settings-module px-4 py-4 sm:px-5 sm:py-4">
+                          <p className="ds-kicker mb-2">Канал для прощания</p>
+                          <CustomSelect
+                            value={farewellChannelId}
+                            options={channelOptions}
+                            placeholder={resourcesLoading ? "Загрузка каналов..." : "Не выбран"}
+                            disabled={resourcesLoading}
+                            onChange={setFarewellChannelId}
+                            ariaLabel="Канал для прощания"
+                          />
+                        </section>
+
+                        {renderSharedMessageEditor({
+                          sectionDataBlock: "farewell-composer",
+                          pickerAreaRef: farewellPickerAreaRef,
+                          labelId: "farewell-message-label",
+                          title: "Сообщение прощания",
+                          helper:
+                            "Используйте переменные: {user}, {username}, {server}, {memberCount}, {date}",
+                          mode: farewellMessageEditorMode,
+                          onModeChange: (mode) => setFarewellMessageEditorMode(mode),
+                          rawRef: farewellTextareaRef,
+                          value: farewellMessage,
+                          onRawChange: (next) => {
+                            farewellRawInsertCaretRef.current = null;
+                            setFarewellMessage(next);
+                          },
+                          previewRef: farewellPreviewEditorRef,
+                          onPreviewCopy: handleFarewellRichCopy,
+                          onPreviewCut: handleFarewellRichCut,
+                          onPreviewDoubleClick: handleFarewellRichDoubleClick,
+                          onPreviewInput: handleFarewellRichInput,
+                          onPreviewCompositionStart: () => {
+                            farewellRichComposeRef.current = true;
+                          },
+                          onPreviewCompositionEnd: () => {
+                            farewellRichComposeRef.current = false;
+                            handleFarewellRichInput();
+                          },
+                          onPreviewPaste: handleFarewellRichPaste,
+                          onPreviewKeyDown: handleFarewellRichKeyDown,
+                          showImageButton: true,
+                          imageButtonAriaAdd: "Добавить изображение к сообщению прощания",
+                          imageButtonAriaReplace: "Заменить изображение в сообщении прощания",
+                          imageInputRef: farewellImageInputRef,
+                          onImageInput: handleFarewellImageInput,
+                          onImageButtonClick: () => farewellImageInputRef.current?.click(),
+                          toolbarTypes: ["emoji", "channel", "role", "variable"],
+                          toolbarKeyPrefix: "farewell",
+                          toolbarAnchorsRef: farewellPickerAnchorRefs,
+                          pickerScope: "farewell",
+                          captureInsertAnchor: captureFarewellInsertAnchor,
+                          imageDataUrl: farewellImageDataUrl,
+                          imagePreviewAlt: "Изображение для сообщения прощания",
+                          imageZoneActive: farewellImageZoneActive,
+                          onImageDragEnter: onFarewellImageDragEnter,
+                          onImageDragLeave: onFarewellImageDragLeave,
+                          onImageDragOver: onFarewellImageDragOver,
+                          onImageDrop: handleFarewellImageDrop,
+                          onImageRemove: () => {
+                            setFarewellImageDataUrl("");
+                            setFarewellImageFilename("");
+                            setFarewellImageUploadError("");
+                          },
+                          imageUploadError: farewellImageUploadError,
+                        })}
+
+                        <section
+                          data-welcome-block="test-actions"
+                          className="welcome-settings-module px-4 py-4 sm:px-5 sm:py-4"
+                        >
+                          <div
+                            className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between"
+                            role="group"
+                            aria-label="Проверка прощания в канале"
+                          >
+                            <button
+                              type="button"
+                              onClick={handleSendTestFarewell}
+                              disabled={isSendingTest}
+                              aria-label={isSendingTest ? "Отправка тестового сообщения" : "Отправить тестовое прощание в выбранный канал"}
+                              className="inline-flex w-fit shrink-0 cursor-pointer items-center gap-1.5 rounded-full border border-white/[0.07] bg-white/[0.025] px-3 py-1.5 text-[12px] font-medium leading-tight text-zinc-400 shadow-none transition hover:border-white/[0.11] hover:bg-white/[0.05] hover:text-zinc-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)] focus-visible:ring-offset-2 focus-visible:ring-offset-[rgba(9,9,15,0.96)] disabled:cursor-not-allowed disabled:opacity-45"
+                            >
+                              <svg
+                                viewBox="0 0 24 24"
+                                className="h-3 w-3 shrink-0 opacity-70"
+                                fill="none"
+                                stroke="currentColor"
+                                strokeWidth="1.65"
+                                strokeLinecap="round"
+                                strokeLinejoin="round"
+                                aria-hidden
+                              >
+                                <path d="M22 2 11 13M22 2l-7 20-4-9-9-4 20-7Z" />
+                              </svg>
+                              {isSendingTest ? "Отправка…" : "Отправить тест"}
+                            </button>
+                            <div className="flex min-w-0 flex-1 flex-col gap-0.5 sm:items-end sm:text-right">
+                              <p className="text-[11px] font-normal leading-snug text-zinc-500">
+                                Проверить, как сообщение выглядит в Discord
+                              </p>
+                              {testSendStatus ? (
+                                <p
+                                  role="status"
+                                  className={`max-w-prose text-[11px] font-normal leading-snug sm:ml-auto ${
+                                    testSendStatusTone === "success"
+                                      ? "text-emerald-500/85"
+                                      : testSendStatusTone === "error"
+                                        ? "text-rose-400/85"
+                                        : "text-zinc-500"
+                                  }`}
+                                >
+                                  {testSendStatus}
+                                </p>
+                              ) : null}
+                            </div>
+                          </div>
+                        </section>
+                      </div>
+                      {insertPickerPortal}
+                      {!farewellEnabled ? (
+                        <>
+                          <button
+                            type="button"
+                            className="absolute inset-0 z-[5] cursor-pointer border-0 bg-transparent p-0 shadow-none outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)] focus-visible:ring-offset-2 focus-visible:ring-offset-[rgba(9,9,15,0.96)]"
+                            aria-label="Прощание отключено. Нажмите, чтобы включить."
+                            onClick={() => setFarewellEnabled(true)}
+                          />
+                          <div
+                            className="pointer-events-none absolute left-1/2 top-1/2 z-[6] max-w-[min(92%,17.5rem)] -translate-x-1/2 -translate-y-1/2 px-3"
+                            role="status"
+                          >
+                            <p
+                              className="rounded-2xl px-3 py-1.5 text-center text-[12px] font-medium leading-snug tracking-[-0.01em] text-zinc-100/90"
+                              style={{
+                                background: "rgba(28, 26, 36, 0.42)",
+                                backdropFilter: "blur(14px) saturate(150%)",
+                                WebkitBackdropFilter: "blur(14px) saturate(150%)",
+                                border: "1px solid rgba(255,255,255,0.1)",
+                                boxShadow: "inset 0 1px 0 rgba(255,255,255,0.08)",
+                              }}
+                            >
+                              Прощание отключено. Нажмите, чтобы включить.
+                            </p>
+                          </div>
+                        </>
+                      ) : null}
                     </div>
                   </CollapsibleSettingsSection>
                 ) : activeSection === "autoRoles" ? (

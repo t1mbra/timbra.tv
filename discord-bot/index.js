@@ -2,6 +2,7 @@ require("dotenv").config();
 
 const { Client, GatewayIntentBits, Events } = require("discord.js");
 const { handleGuildMemberAdd } = require("./lib/guildMemberAdd");
+const { handleGuildMemberRemove } = require("./lib/guildMemberRemove");
 const { writeBotStateNow, scheduleBotStateWrite } = require("./lib/botState");
 
 const RESYNC_INTERVAL_MS = 60_000;
@@ -31,6 +32,10 @@ client.on(Events.GuildDelete, () => {
 
 client.on(Events.GuildMemberAdd, (member) => {
   void handleGuildMemberAdd(member);
+});
+
+client.on(Events.GuildMemberRemove, (member) => {
+  void handleGuildMemberRemove(member);
 });
 
 client.login(process.env.DISCORD_TOKEN);
