@@ -20,16 +20,21 @@ import { createPortal } from "react-dom";
 import {
   ArrowDownRight,
   Bold,
+  Bot,
   CircleDot,
+  Clock,
   Droplets,
   Image as ImageIcon,
   Italic,
   Layers,
   PaintBucket,
+  Plus,
+  ShieldCheck,
   Sparkles,
   Trash2,
   Type,
   Upload,
+  X,
 } from "lucide-react";
 import { DashboardDropdownSurface } from "@/app/components/DashboardDropdownSurface";
 import { welcomeCardPreviewFontStack } from "@/lib/welcomeCardPreviewFonts";
@@ -62,6 +67,7 @@ import {
 import { SidebarServerSwitcher } from "../../components/SidebarServerSwitcher";
 import { UserMenu } from "../../components/usermenu";
 import { welcomeModuleCopy } from "@/lib/copy/welcomeModule";
+import type { AutoRoleDelayUnit } from "@/lib/persistence/configTypes";
 
 type PickerType = "emoji" | "channel" | "role" | "variable" | null;
 type PickerKind = Exclude<PickerType, null>;
@@ -174,8 +180,6 @@ function normalizeWelcomeDeliveryModeFromPayload(data: Record<string, unknown>):
 type DashboardConfig = {
   welcomeEnabled: boolean;
   channelId: string;
-  humanRoleId: string;
-  botRoleId: string;
   skipBotAccounts: boolean;
   welcomeDeliveryMode: WelcomeDeliveryMode;
   welcomeDmMessage: string;
@@ -202,6 +206,18 @@ type DashboardConfig = {
   farewellMessage?: string;
   farewellImageDataUrl?: string;
   farewellImageFilename?: string;
+  autoRolesEnabled?: boolean;
+  memberRoleIds?: string[];
+  waitForMembershipScreening?: boolean;
+  memberDelayEnabled?: boolean;
+  memberDelayValue?: number;
+  memberDelayUnit?: AutoRoleDelayUnit;
+  botAutoRolesEnabled?: boolean;
+  botUseSeparateRoles?: boolean;
+  botRoleIds?: string[];
+  botDelayEnabled?: boolean;
+  botDelayValue?: number;
+  botDelayUnit?: AutoRoleDelayUnit;
 };
 
 type CustomSelectOption = {
@@ -214,8 +230,6 @@ type CustomSelectOption = {
 type DirtyConfig = {
   welcomeEnabled: boolean;
   channelId: string;
-  humanRoleId: string;
-  botRoleId: string;
   skipBotAccounts: boolean;
   welcomeDeliveryMode: WelcomeDeliveryMode;
   welcomeDmMessage: string;
@@ -242,6 +256,18 @@ type DirtyConfig = {
   farewellMessage: string;
   farewellImageDataUrl: string;
   farewellImageFilename: string;
+  autoRolesEnabled: boolean;
+  memberRoleIds: string[];
+  waitForMembershipScreening: boolean;
+  memberDelayEnabled: boolean;
+  memberDelayValue: number;
+  memberDelayUnit: AutoRoleDelayUnit;
+  botAutoRolesEnabled: boolean;
+  botUseSeparateRoles: boolean;
+  botRoleIds: string[];
+  botDelayEnabled: boolean;
+  botDelayValue: number;
+  botDelayUnit: AutoRoleDelayUnit;
   // Флаги показывают, присутствовали ли поля в загруженном config.json.
   // Если поле отсутствовало, изменения в соответствующем UI не должны считаться "dirty".
   welcomeStyleExists: boolean;
@@ -250,11 +276,17 @@ type DirtyConfig = {
   imageCardExists: boolean;
 };
 
+function snowflakeArraysEqual(a: string[], b: string[]): boolean {
+  if (a.length !== b.length) return false;
+  for (let i = 0; i < a.length; i += 1) {
+    if (a[i] !== b[i]) return false;
+  }
+  return true;
+}
+
 function configsEqual(a: DirtyConfig, b: DirtyConfig): boolean {
   if (a.welcomeEnabled !== b.welcomeEnabled) return false;
   if (a.channelId !== b.channelId) return false;
-  if (a.humanRoleId !== b.humanRoleId) return false;
-  if (a.botRoleId !== b.botRoleId) return false;
   if (a.skipBotAccounts !== b.skipBotAccounts) return false;
   if (a.welcomeDeliveryMode !== b.welcomeDeliveryMode) return false;
   if (a.welcomeDmMessage !== b.welcomeDmMessage) return false;
@@ -283,6 +315,18 @@ function configsEqual(a: DirtyConfig, b: DirtyConfig): boolean {
   if (a.farewellMessage !== b.farewellMessage) return false;
   if (a.farewellImageDataUrl !== b.farewellImageDataUrl) return false;
   if (a.farewellImageFilename !== b.farewellImageFilename) return false;
+  if (a.autoRolesEnabled !== b.autoRolesEnabled) return false;
+  if (!snowflakeArraysEqual(a.memberRoleIds, b.memberRoleIds)) return false;
+  if (a.waitForMembershipScreening !== b.waitForMembershipScreening) return false;
+  if (a.memberDelayEnabled !== b.memberDelayEnabled) return false;
+  if (a.memberDelayValue !== b.memberDelayValue) return false;
+  if (a.memberDelayUnit !== b.memberDelayUnit) return false;
+  if (a.botAutoRolesEnabled !== b.botAutoRolesEnabled) return false;
+  if (a.botUseSeparateRoles !== b.botUseSeparateRoles) return false;
+  if (!snowflakeArraysEqual(a.botRoleIds, b.botRoleIds)) return false;
+  if (a.botDelayEnabled !== b.botDelayEnabled) return false;
+  if (a.botDelayValue !== b.botDelayValue) return false;
+  if (a.botDelayUnit !== b.botDelayUnit) return false;
 
   return true;
 }
@@ -617,6 +661,41 @@ function applyWelcomeImageCardPreviewPlaceholders(text: string): string {
 const DEFAULT_WELCOME_MESSAGE = "Добро пожаловать, {user}! ✨\nЗагляни в {channel:rules}";
 const DEFAULT_WELCOME_DESCRIPTION = "Очень рады тебя видеть на сервере {server} 💜";
 const DEFAULT_FAREWELL_MESSAGE = "{username} покинул сервер {server}. Будем скучать 🌙";
+
+const DISCORD_MEMBERSHIP_SCREENING_HELP_RU =
+  "https://support.discord.com/hc/ru/articles/1500000466882-%D0%A7%D0%B0%D0%B2%D0%BE-%D0%BF%D0%BE-%D0%BE%D1%82%D0%B1%D0%BE%D1%80%D1%83-%D1%81-%D0%BF%D0%BE%D0%BC%D0%BE%D1%89%D1%8C%D1%8E-%D0%BF%D1%80%D0%B0%D0%B2%D0%B8%D0%BB";
+
+const ROLE_ID_SNOWFLAKE_RE = /^\d{17,20}$/;
+
+function parseGuildRoleIdListFromPayload(raw: unknown, guildId: string): string[] {
+  if (!Array.isArray(raw)) return [];
+  const out: string[] = [];
+  for (const x of raw) {
+    if (typeof x !== "string") continue;
+    const t = x.trim();
+    if (!ROLE_ID_SNOWFLAKE_RE.test(t) || t === guildId) continue;
+    if (!out.includes(t)) out.push(t);
+  }
+  return out;
+}
+
+function parseDelayUnitFromPayload(raw: unknown, fallback: AutoRoleDelayUnit): AutoRoleDelayUnit {
+  const s = typeof raw === "string" ? raw.trim().toLowerCase() : "";
+  if (s === "seconds" || s === "minutes" || s === "hours" || s === "days") return s;
+  return fallback;
+}
+
+function clampDelayValue(raw: unknown, fallback: number): number {
+  if (typeof raw === "number" && Number.isFinite(raw)) return Math.max(1, Math.floor(raw));
+  return fallback;
+}
+
+const AUTO_ROLE_DELAY_UNIT_LABELS: { value: AutoRoleDelayUnit; label: string }[] = [
+  { value: "seconds", label: "секунды" },
+  { value: "minutes", label: "минуты" },
+  { value: "hours", label: "часы" },
+  { value: "days", label: "дни" },
+];
 
 function resolveFarewellMessageFromConfig(raw: unknown, welcomeMessageRaw: unknown): string {
   const fallback = DEFAULT_FAREWELL_MESSAGE;
@@ -1642,6 +1721,7 @@ function CustomSelect({
   compact = false,
   hideSearch = false,
   minimal = false,
+  variant = "default",
 }: {
   value: string;
   options: CustomSelectOption[];
@@ -1653,6 +1733,7 @@ function CustomSelect({
   hideSearch?: boolean;
   /** Компактный «тулбарный» вид без тяжёлого ds-select */
   minimal?: boolean;
+  variant?: "default" | "compactGlass";
 }) {
   const [isOpen, setIsOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
@@ -1748,6 +1829,23 @@ function CustomSelect({
     }
   }, [isOpen]);
 
+  const compactGlass = variant === "compactGlass";
+  const triggerClass = minimal
+    ? compactGlass
+      ? "flex h-8 w-full max-h-8 min-h-[2rem] cursor-pointer items-center justify-between gap-1.5 rounded-[10px] border border-white/[0.12] bg-[rgba(255,255,255,0.045)] px-2.5 py-0 text-left text-[11px] font-medium text-zinc-100 shadow-[inset_0_1px_0_rgba(255,255,255,0.08)] outline-none transition hover:bg-[rgba(255,255,255,0.07)] focus-visible:ring-2 focus-visible:ring-[var(--ring)] disabled:cursor-not-allowed disabled:opacity-60"
+      : "flex h-8 w-full max-h-8 min-h-[2rem] cursor-pointer items-center justify-between gap-1 rounded-full border border-white/[0.12] bg-white/[0.06] px-2.5 py-0 text-left text-[11px] font-medium text-zinc-100 shadow-none outline-none transition hover:bg-white/[0.08] focus-visible:ring-2 focus-visible:ring-[var(--ring)] disabled:cursor-not-allowed disabled:opacity-60"
+    : `ds-select ds-liquid-btn flex cursor-pointer items-center justify-between gap-2 text-left disabled:cursor-not-allowed disabled:opacity-60 ${
+        compact ? "min-h-[2rem] px-2.5 py-1.5 text-xs" : ""
+      }`;
+  const panelClass = `absolute z-[240] origin-top isolation-isolate transition-all duration-200 ${
+    isOpen
+      ? "pointer-events-auto translate-y-0 scale-y-100 opacity-100"
+      : "pointer-events-none -translate-y-1 scale-y-95 opacity-0"
+  }`;
+  const listClass = compactGlass
+    ? "overflow-y-auto p-1.5"
+    : "divide-y divide-white/[0.08] overflow-y-auto";
+
   return (
     <div ref={rootRef} className="relative overflow-visible">
       <button
@@ -1760,13 +1858,7 @@ function CustomSelect({
           if (!disabled) setIsOpen((prev) => !prev);
         }}
         disabled={disabled}
-        className={
-          minimal
-            ? "flex h-8 w-full max-h-8 min-h-[2rem] cursor-pointer items-center justify-between gap-1 rounded-full border border-white/[0.12] bg-white/[0.06] px-2.5 py-0 text-left text-[11px] font-medium text-zinc-100 shadow-none outline-none transition hover:bg-white/[0.08] focus-visible:ring-2 focus-visible:ring-[var(--ring)] disabled:cursor-not-allowed disabled:opacity-60"
-            : `ds-select ds-liquid-btn flex cursor-pointer items-center justify-between gap-2 text-left disabled:cursor-not-allowed disabled:opacity-60 ${
-                compact ? "min-h-[2rem] px-2.5 py-1.5 text-xs" : ""
-              }`
-        }
+        className={triggerClass}
       >
         <span
           className={`min-w-0 flex-1 truncate ${selectedOption ? "text-zinc-100" : "text-zinc-400"}`}
@@ -1788,22 +1880,24 @@ function CustomSelect({
             <div
               ref={panelRef}
               data-dashboard-select-portal=""
-              className={`absolute z-[240] origin-top isolation-isolate transition-all duration-200 ${
-                isOpen
-                  ? "pointer-events-auto translate-y-0 scale-y-100 opacity-100"
-                  : "pointer-events-none -translate-y-1 scale-y-95 opacity-0"
-              }`}
+              className={panelClass}
               style={{
                 top: `${panelPosition.top}px`,
                 left: `${panelPosition.left}px`,
                 width: `${panelPosition.width}px`,
               }}
             >
-              <DashboardDropdownSurface>
+              <DashboardDropdownSurface
+                className={
+                  compactGlass
+                    ? "rounded-[12px] border border-white/[0.11] bg-[rgba(18,22,36,0.5)] shadow-[0_10px_28px_rgba(0,0,0,0.35)] backdrop-blur-[18px]"
+                    : undefined
+                }
+              >
                 <ul
                   role="listbox"
                   aria-label={ariaLabel}
-                  className="divide-y divide-white/10 overflow-y-auto"
+                  className={listClass}
                   style={{ maxHeight: `${panelPosition.maxHeight}px` }}
                 >
                   {!hideSearch ? (
@@ -1839,7 +1933,9 @@ function CustomSelect({
                           }}
                           className={`ds-liquid-list-item flex w-full items-center text-left ${
                             minimal
-                              ? "min-h-[1.5rem] px-2 py-1 text-[11px]"
+                              ? compactGlass
+                                ? "min-h-[1.9rem] rounded-[8px] px-2.5 py-1.5 text-[11px]"
+                                : "min-h-[1.5rem] px-2 py-1 text-[11px]"
                               : compact
                                 ? "min-h-[2rem] px-2.5 py-2 text-xs"
                                 : "min-h-[2.5rem] px-3 py-2.5 text-sm"
@@ -1847,11 +1943,18 @@ function CustomSelect({
                             option.disabled
                               ? "cursor-not-allowed opacity-45"
                               : option.value === value
-                                ? "bg-[var(--brand)]/24 text-zinc-100"
+                                ? compactGlass
+                                  ? "bg-white/[0.09] text-zinc-100"
+                                  : "bg-white/[0.07] text-zinc-100"
                                 : "text-zinc-300 hover:bg-white/[0.08]"
                           }`}
                         >
                           <span className="min-w-0 flex-1 truncate">{option.label}</span>
+                          {option.value === value ? (
+                            <span className="ml-2 text-[10px] text-violet-300/90" aria-hidden>
+                              ✓
+                            </span>
+                          ) : null}
                         </button>
                       </li>
                     ))
@@ -1862,6 +1965,280 @@ function CustomSelect({
             document.body
           )
         : null}
+    </div>
+  );
+}
+
+function AutoRoleDelayUnitDropdown({
+  value,
+  options,
+  onChange,
+  ariaLabel,
+}: {
+  value: AutoRoleDelayUnit;
+  options: CustomSelectOption[];
+  onChange: (next: AutoRoleDelayUnit) => void;
+  ariaLabel: string;
+}) {
+  const [isOpen, setIsOpen] = useState(false);
+  const [isMounted, setIsMounted] = useState(false);
+  const [layout, setLayout] = useState<{
+    top: number;
+    left: number;
+    width: number;
+    openUpward: boolean;
+  } | null>(null);
+  const [highlighted, setHighlighted] = useState(0);
+  const triggerRef = useRef<HTMLButtonElement | null>(null);
+  const panelRef = useRef<HTMLDivElement | null>(null);
+  const rootRef = useRef<HTMLDivElement | null>(null);
+
+  const selectedIndex = useMemo(
+    () => Math.max(0, options.findIndex((o) => o.value === value)),
+    [options, value]
+  );
+
+  useEffect(() => {
+    setIsMounted(true);
+  }, []);
+
+  useEffect(() => {
+    if (!isOpen) return;
+    setHighlighted(selectedIndex);
+  }, [isOpen, selectedIndex]);
+
+  useLayoutEffect(() => {
+    if (!isOpen) {
+      setLayout(null);
+      return;
+    }
+    const updateLayout = () => {
+      const trigger = triggerRef.current;
+      if (!trigger) return;
+      const rect = trigger.getBoundingClientRect();
+      const viewportPadding = 12;
+      const gap = 8;
+      const rowH = 30;
+      const menuH = Math.min(220, options.length * rowH + 12);
+      const spaceBelow = window.innerHeight - rect.bottom - viewportPadding - gap;
+      const spaceAbove = rect.top - viewportPadding - gap;
+      const openUpward = spaceBelow < Math.min(150, menuH) && spaceAbove > spaceBelow;
+      const width = Math.max(112, Math.round(rect.width));
+      const left = Math.min(
+        Math.max(rect.left + window.scrollX, viewportPadding + window.scrollX),
+        window.scrollX + window.innerWidth - viewportPadding - width
+      );
+      const top = openUpward
+        ? Math.max(rect.top + window.scrollY - gap - menuH, viewportPadding + window.scrollY)
+        : rect.bottom + window.scrollY + gap;
+      setLayout({ top, left, width, openUpward });
+    };
+    updateLayout();
+    window.addEventListener("resize", updateLayout);
+    window.addEventListener("scroll", updateLayout, true);
+    return () => {
+      window.removeEventListener("resize", updateLayout);
+      window.removeEventListener("scroll", updateLayout, true);
+    };
+  }, [isOpen, options.length]);
+
+  useEffect(() => {
+    if (!isOpen) return;
+    const onDown = (event: MouseEvent) => {
+      const target = event.target as Node;
+      if (rootRef.current?.contains(target)) return;
+      if (panelRef.current?.contains(target)) return;
+      setIsOpen(false);
+    };
+    const onKey = (event: globalThis.KeyboardEvent) => {
+      if (event.key === "Escape") {
+        setIsOpen(false);
+        return;
+      }
+      if (event.key === "ArrowDown") {
+        event.preventDefault();
+        setHighlighted((i) => Math.min(options.length - 1, i + 1));
+        return;
+      }
+      if (event.key === "ArrowUp") {
+        event.preventDefault();
+        setHighlighted((i) => Math.max(0, i - 1));
+        return;
+      }
+      if (event.key === "Enter") {
+        event.preventDefault();
+        const opt = options[highlighted];
+        if (!opt || opt.disabled) return;
+        onChange(opt.value as AutoRoleDelayUnit);
+        setIsOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", onDown);
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("mousedown", onDown);
+      document.removeEventListener("keydown", onKey);
+    };
+  }, [isOpen, highlighted, onChange, options]);
+
+  const selected = options[selectedIndex] ?? options[0];
+
+  return (
+    <div ref={rootRef} className="relative w-[7.5rem]">
+      <button
+        ref={triggerRef}
+        type="button"
+        aria-haspopup="listbox"
+        aria-expanded={isOpen}
+        aria-label={ariaLabel}
+        onClick={() => setIsOpen((v) => !v)}
+        className="inline-flex h-8 w-full items-center justify-between rounded-[15px] border border-white/[0.12] bg-[rgba(255,255,255,0.045)] px-3 text-left text-[12px] font-medium text-zinc-100 shadow-[inset_0_1px_0_rgba(255,255,255,0.08)] outline-none transition hover:bg-[rgba(255,255,255,0.07)] focus-visible:ring-2 focus-visible:ring-[var(--ring)]"
+      >
+        <span className="truncate">{selected?.label ?? "секунды"}</span>
+        <span
+          className={`ml-2 text-[10px] text-zinc-400 transition-transform duration-150 ${
+            isOpen ? "rotate-180" : ""
+          }`}
+          aria-hidden
+        >
+          ▼
+        </span>
+      </button>
+      {isMounted && layout
+        ? createPortal(
+            <div
+              ref={panelRef}
+              className={`absolute z-[280] origin-top transition-all duration-150 ${
+                isOpen
+                  ? "pointer-events-auto translate-y-0 opacity-100"
+                  : "pointer-events-none -translate-y-1 opacity-0"
+              }`}
+              style={{
+                top: `${layout.top}px`,
+                left: `${layout.left}px`,
+                width: `${layout.width}px`,
+              }}
+            >
+              <div className="rounded-[15px] border border-white/[0.11] bg-[rgba(18,22,36,0.56)] p-1 shadow-[0_14px_34px_rgba(0,0,0,0.38)] backdrop-blur-[18px]">
+                <ul role="listbox" aria-label={ariaLabel} className="space-y-0.5">
+                  {options.map((opt, idx) => {
+                    const isSelected = opt.value === value;
+                    const isHl = idx === highlighted;
+                    return (
+                      <li key={opt.value}>
+                        <button
+                          type="button"
+                          role="option"
+                          aria-selected={isSelected}
+                          onMouseEnter={() => setHighlighted(idx)}
+                          onClick={() => {
+                            if (opt.disabled) return;
+                            onChange(opt.value as AutoRoleDelayUnit);
+                            setIsOpen(false);
+                          }}
+                          className={`flex h-[30px] w-full items-center justify-between rounded-[10px] px-2.5 text-[12px] leading-none transition ${
+                            opt.disabled
+                              ? "cursor-not-allowed opacity-45"
+                              : isSelected
+                                ? "bg-white/[0.09] text-zinc-100"
+                                : isHl
+                                  ? "bg-white/[0.07] text-zinc-100"
+                                  : "text-zinc-300 hover:bg-white/[0.07]"
+                          }`}
+                        >
+                          <span className="truncate">{opt.label}</span>
+                          {isSelected ? (
+                            <span className="ml-2 text-[10px] text-violet-300/90" aria-hidden>
+                              ✓
+                            </span>
+                          ) : null}
+                        </button>
+                      </li>
+                    );
+                  })}
+                </ul>
+              </div>
+            </div>,
+            document.body
+          )
+        : null}
+    </div>
+  );
+}
+
+function AutoRoleDelayControl({
+  value,
+  unit,
+  onValueChange,
+  onUnitChange,
+  unitOptions,
+  valueInputId,
+  valueAriaLabel,
+  unitAriaLabel,
+}: {
+  value: number;
+  unit: AutoRoleDelayUnit;
+  onValueChange: (next: number) => void;
+  onUnitChange: (next: AutoRoleDelayUnit) => void;
+  unitOptions: CustomSelectOption[];
+  valueInputId: string;
+  valueAriaLabel: string;
+  unitAriaLabel: string;
+}) {
+  const bump = (delta: number) => {
+    onValueChange(Math.max(1, Math.floor(value + delta)));
+  };
+
+  const handleValueTextChange = (raw: string) => {
+    const digitsOnly = raw.replace(/[^\d]/g, "");
+    if (!digitsOnly) {
+      onValueChange(1);
+      return;
+    }
+    onValueChange(clampDelayValue(Number(digitsOnly), 1));
+  };
+
+  return (
+    <div className="inline-flex items-center gap-2 rounded-xl border border-white/[0.08] bg-white/[0.02] p-1.5 shadow-[inset_0_1px_0_rgba(255,255,255,0.05)]">
+      <div className="inline-flex h-8 items-center rounded-lg border border-white/[0.1] bg-zinc-950/45 px-1.5 shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]">
+        <button
+          type="button"
+          onClick={() => bump(-1)}
+          className="inline-flex h-6 w-6 items-center justify-center rounded-md text-zinc-400 transition hover:bg-white/[0.08] hover:text-zinc-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)]"
+          aria-label={`${valueAriaLabel}: уменьшить`}
+          title="Уменьшить"
+        >
+          -
+        </button>
+        <label className="sr-only" htmlFor={valueInputId}>
+          {valueAriaLabel}
+        </label>
+        <input
+          id={valueInputId}
+          type="text"
+          inputMode="numeric"
+          pattern="[0-9]*"
+          value={String(value)}
+          onChange={(e) => handleValueTextChange(e.target.value)}
+          aria-label={valueAriaLabel}
+          className="h-6 w-14 border-0 bg-transparent px-1 text-center text-[12px] font-medium tabular-nums text-zinc-100 outline-none"
+        />
+        <button
+          type="button"
+          onClick={() => bump(1)}
+          className="inline-flex h-6 w-6 items-center justify-center rounded-md text-zinc-400 transition hover:bg-white/[0.08] hover:text-zinc-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)]"
+          aria-label={`${valueAriaLabel}: увеличить`}
+          title="Увеличить"
+        >
+          +
+        </button>
+      </div>
+      <AutoRoleDelayUnitDropdown
+        value={unit}
+        options={unitOptions}
+        onChange={onUnitChange}
+        ariaLabel={unitAriaLabel}
+      />
     </div>
   );
 }
@@ -1887,6 +2264,11 @@ export function DashboardGuildPageClient({
   const pickerAreaRef = useRef<HTMLDivElement | null>(null);
   const embedPickerAreaRef = useRef<HTMLDivElement | null>(null);
   const pickerPanelRef = useRef<HTMLDivElement | null>(null);
+  const autoRoleMemberPlusRef = useRef<HTMLButtonElement | null>(null);
+  const autoRoleBotPlusRef = useRef<HTMLButtonElement | null>(null);
+  const autoRoleMemberSurfaceRef = useRef<HTMLDivElement | null>(null);
+  const autoRoleBotSurfaceRef = useRef<HTMLDivElement | null>(null);
+  const autoRolePickerPanelRef = useRef<HTMLDivElement | null>(null);
 
   const [bootstrap, setBootstrap] = useState<DashboardBootstrap | null>(null);
   const [resources, setResources] = useState<GuildResourcesResponse>({
@@ -1899,8 +2281,22 @@ export function DashboardGuildPageClient({
   const [resourcesError, setResourcesError] = useState("");
   const [message, setMessage] = useState(DEFAULT_WELCOME_MESSAGE);
   const [channelId, setChannelId] = useState("");
-  const [humanRoleId, setHumanRoleId] = useState("");
-  const [botRoleId, setBotRoleId] = useState("");
+  const [autoRolesEnabled, setAutoRolesEnabled] = useState(false);
+  const [memberRoleIds, setMemberRoleIds] = useState<string[]>([]);
+  const [waitForMembershipScreening, setWaitForMembershipScreening] = useState(false);
+  const [memberDelayEnabled, setMemberDelayEnabled] = useState(false);
+  const [memberDelayValue, setMemberDelayValue] = useState(1);
+  const [memberDelayUnit, setMemberDelayUnit] = useState<AutoRoleDelayUnit>("seconds");
+  const [botAutoRolesEnabled, setBotAutoRolesEnabled] = useState(false);
+  const [botUseSeparateRoles, setBotUseSeparateRoles] = useState(false);
+  const [botRoleIds, setBotRoleIds] = useState<string[]>([]);
+  const [botDelayEnabled, setBotDelayEnabled] = useState(false);
+  const [botDelayValue, setBotDelayValue] = useState(1);
+  const [botDelayUnit, setBotDelayUnit] = useState<AutoRoleDelayUnit>("seconds");
+  const [autoRolesSaveErrors, setAutoRolesSaveErrors] = useState<{
+    member: string;
+    bot: string;
+  }>({ member: "", bot: "" });
   const [welcomeStyle, setWelcomeStyle] = useState<DashboardConfig["welcomeStyle"]>("text");
   const [textImageDataUrl, setTextImageDataUrl] = useState("");
   const [title, setTitle] = useState("Добро пожаловать");
@@ -2003,6 +2399,14 @@ export function DashboardGuildPageClient({
     width: number;
     maxHeight: number;
   } | null>(null);
+  const [autoRolePickerFor, setAutoRolePickerFor] = useState<"member" | "bot" | null>(null);
+  const [autoRolePickerSearch, setAutoRolePickerSearch] = useState("");
+  const [autoRolePickerLayout, setAutoRolePickerLayout] = useState<{
+    left: number;
+    top: number;
+    width: number;
+    maxHeight: number;
+  } | null>(null);
   const [activeSection, setActiveSection] = useState<SectionId>("welcome");
   const textImageInputRef = useRef<HTMLInputElement | null>(null);
   const textImageDragDepthRef = useRef(0);
@@ -2032,6 +2436,35 @@ export function DashboardGuildPageClient({
     if (storedDmMode) setDmMessageEditorMode(storedDmMode);
     if (storedFarewellMode) setFarewellMessageEditorMode(storedFarewellMode);
   }, []);
+
+  useEffect(() => {
+    if (!autoRolesSaveErrors.member) return;
+    const hasMeaningfulBotPath =
+      autoRolesEnabled && botAutoRolesEnabled && botUseSeparateRoles && botRoleIds.length > 0;
+    if (!(autoRolesEnabled && memberRoleIds.length === 0 && !hasMeaningfulBotPath)) {
+      setAutoRolesSaveErrors((prev) => ({ ...prev, member: "" }));
+    }
+  }, [
+    autoRolesEnabled,
+    memberRoleIds,
+    botAutoRolesEnabled,
+    botUseSeparateRoles,
+    botRoleIds,
+    autoRolesSaveErrors.member,
+  ]);
+
+  useEffect(() => {
+    if (!autoRolesSaveErrors.bot) return;
+    if (!(autoRolesEnabled && botAutoRolesEnabled && botUseSeparateRoles && botRoleIds.length === 0)) {
+      setAutoRolesSaveErrors((prev) => ({ ...prev, bot: "" }));
+    }
+  }, [
+    autoRolesEnabled,
+    botAutoRolesEnabled,
+    botUseSeparateRoles,
+    botRoleIds,
+    autoRolesSaveErrors.bot,
+  ]);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -2318,11 +2751,12 @@ export function DashboardGuildPageClient({
             ? data.welcomeDmChannelMessage
             : baseMessageResolved;
 
+        const memberRoleIdsResolved = parseGuildRoleIdListFromPayload(data.memberRoleIds, guildId);
+        const botRoleIdsResolved = parseGuildRoleIdListFromPayload(data.botRoleIds, guildId);
+
         const snapshot: DirtyConfig = {
           welcomeEnabled: data.welcomeEnabled !== false,
           channelId: baseChannelIdResolved,
-          humanRoleId: data.humanRoleId ?? "",
-          botRoleId: data.botRoleId ?? "",
           skipBotAccounts: data.skipBotAccounts ?? true,
           welcomeDeliveryMode: welcomeDeliveryModeResolved,
           welcomeDmMessage: welcomeDmMessageResolved,
@@ -2359,11 +2793,33 @@ export function DashboardGuildPageClient({
           textImageDataUrlExists,
           welcomeDmImageDataUrlExists,
           imageCardExists,
+          autoRolesEnabled: data.autoRolesEnabled === true,
+          memberRoleIds: memberRoleIdsResolved,
+          waitForMembershipScreening: data.waitForMembershipScreening === true,
+          memberDelayEnabled: data.memberDelayEnabled === true,
+          memberDelayValue: clampDelayValue(data.memberDelayValue, 1),
+          memberDelayUnit: parseDelayUnitFromPayload(data.memberDelayUnit, "seconds"),
+          botAutoRolesEnabled: data.botAutoRolesEnabled === true,
+          botUseSeparateRoles: data.botUseSeparateRoles === true,
+          botRoleIds: botRoleIdsResolved,
+          botDelayEnabled: data.botDelayEnabled === true,
+          botDelayValue: clampDelayValue(data.botDelayValue, 1),
+          botDelayUnit: parseDelayUnitFromPayload(data.botDelayUnit, "seconds"),
         };
 
         setChannelId(snapshot.channelId);
-        setHumanRoleId(snapshot.humanRoleId);
-        setBotRoleId(snapshot.botRoleId);
+        setAutoRolesEnabled(snapshot.autoRolesEnabled);
+        setMemberRoleIds(snapshot.memberRoleIds);
+        setWaitForMembershipScreening(snapshot.waitForMembershipScreening);
+        setMemberDelayEnabled(snapshot.memberDelayEnabled);
+        setMemberDelayValue(snapshot.memberDelayValue);
+        setMemberDelayUnit(snapshot.memberDelayUnit);
+        setBotAutoRolesEnabled(snapshot.botAutoRolesEnabled);
+        setBotUseSeparateRoles(snapshot.botUseSeparateRoles);
+        setBotRoleIds(snapshot.botRoleIds);
+        setBotDelayEnabled(snapshot.botDelayEnabled);
+        setBotDelayValue(snapshot.botDelayValue);
+        setBotDelayUnit(snapshot.botDelayUnit);
         setWelcomeEnabled(snapshot.welcomeEnabled);
         setFarewellEnabled(snapshot.farewellEnabled);
         setFarewellChannelId(snapshot.farewellChannelId);
@@ -2390,6 +2846,7 @@ export function DashboardGuildPageClient({
         setEmbedFields(snapshot.embedFields);
         setImageCard(snapshot.imageCard);
         setLastSavedConfig(snapshot);
+        setAutoRolesSaveErrors({ member: "", bot: "" });
         setRichEditorBootstrap((n) => n + 1);
       } catch (err) {
         if (controller.signal.aborted) return;
@@ -2555,6 +3012,35 @@ export function DashboardGuildPageClient({
     return () => document.removeEventListener("mousedown", handleOutsideClick);
   }, [insertPickerType]);
 
+  useEffect(() => {
+    setAutoRolePickerSearch("");
+  }, [autoRolePickerFor]);
+
+  useEffect(() => {
+    if (!autoRolePickerFor) return;
+    const handleOutsideClick = (event: MouseEvent) => {
+      const target = event.target as Node;
+      if (autoRoleMemberPlusRef.current?.contains(target)) return;
+      if (autoRoleBotPlusRef.current?.contains(target)) return;
+      if (autoRolePickerPanelRef.current?.contains(target)) return;
+      setAutoRolePickerFor(null);
+      setAutoRolePickerSearch("");
+    };
+    document.addEventListener("mousedown", handleOutsideClick);
+    return () => document.removeEventListener("mousedown", handleOutsideClick);
+  }, [autoRolePickerFor]);
+
+  useEffect(() => {
+    if (!autoRolePickerFor) return;
+    const handleEscape = (event: globalThis.KeyboardEvent) => {
+      if (event.key !== "Escape") return;
+      setAutoRolePickerFor(null);
+      setAutoRolePickerSearch("");
+    };
+    document.addEventListener("keydown", handleEscape);
+    return () => document.removeEventListener("keydown", handleEscape);
+  }, [autoRolePickerFor]);
+
   const emojiPickerItems = useMemo<PickerItem[]>(
     () =>
       resources.emojis.map((emoji) => ({
@@ -2679,6 +3165,43 @@ export function DashboardGuildPageClient({
       window.removeEventListener("scroll", updateLayout, true);
     };
   }, [insertPickerType, insertPickerSurface, imageCardTextToolbarPos]);
+
+  useLayoutEffect(() => {
+    if (!autoRolePickerFor) {
+      setAutoRolePickerLayout(null);
+      return;
+    }
+    const updateLayout = () => {
+      const anchor =
+        autoRolePickerFor === "member"
+          ? autoRoleMemberSurfaceRef.current
+          : autoRoleBotSurfaceRef.current;
+      if (!anchor) return;
+      const rect = anchor.getBoundingClientRect();
+      const panelWidth = Math.min(Math.max(rect.width, 320), 420);
+      const viewportPadding = 12;
+      const gap = 8;
+      const left = Math.min(
+        Math.max(rect.left, viewportPadding),
+        window.innerWidth - viewportPadding - panelWidth
+      );
+      const spaceAbove = rect.top - viewportPadding - gap;
+      const spaceBelow = window.innerHeight - rect.bottom - viewportPadding - gap;
+      const maxHeight = Math.min(340, Math.max(120, Math.max(spaceAbove, spaceBelow)));
+      const openAbove = spaceBelow < 180 && spaceAbove > spaceBelow;
+      const top = openAbove
+        ? Math.max(rect.top - maxHeight - gap, viewportPadding)
+        : rect.bottom + gap;
+      setAutoRolePickerLayout({ left, top, width: panelWidth, maxHeight });
+    };
+    updateLayout();
+    window.addEventListener("resize", updateLayout);
+    window.addEventListener("scroll", updateLayout, true);
+    return () => {
+      window.removeEventListener("resize", updateLayout);
+      window.removeEventListener("scroll", updateLayout, true);
+    };
+  }, [autoRolePickerFor]);
 
   useLayoutEffect(() => {
     if (welcomeStyle !== "imageCard") {
@@ -2811,6 +3334,14 @@ export function DashboardGuildPageClient({
       })),
     [resources.channels]
   );
+  const autoRoleDelayUnitOptions = useMemo<CustomSelectOption[]>(
+    () =>
+      AUTO_ROLE_DELAY_UNIT_LABELS.map((o) => ({
+        value: o.value,
+        label: o.label,
+      })),
+    []
+  );
   const imageCardFontSelectOptions = useMemo<CustomSelectOption[]>(
     () =>
       availableWelcomeCardFontKeys.map((k) => ({
@@ -2845,15 +3376,9 @@ export function DashboardGuildPageClient({
     },
     []
   );
-  const roleOptions = useMemo(
-    () =>
-      resources.roles
-        .filter((role) => !role.managed)
-        .map((role) => ({
-          value: role.id,
-          label: `@${role.name}`,
-        })),
-    [resources.roles]
+  const autoRolesGuildAssignable = useMemo(
+    () => resources.roles.filter((role) => !role.managed && role.id !== guildId),
+    [resources.roles, guildId]
   );
 
   const previewDateStr = useMemo(() => new Date().toLocaleDateString(), []);
@@ -2905,6 +3430,67 @@ export function DashboardGuildPageClient({
     }),
     [resources.channels, resources.roles, resources.emojis, previewDateStr, previewTemplateValues]
   );
+
+  const autoRolesValidationMessages = useMemo(() => {
+    if (!autoRolesEnabled) {
+      return { stale: "" };
+    }
+    const roleKnown = new Map(resources.roles.map((r) => [r.id, r]));
+    const staleIds =
+      !resourcesLoading && !resources.errors?.roles
+        ? [...memberRoleIds, ...(botAutoRolesEnabled && botUseSeparateRoles ? botRoleIds : [])].some(
+            (id) => !roleKnown.has(id)
+          )
+        : false;
+    const stale = staleIds
+      ? "Сохранённые роли не найдены в списке сервера. Выберите роли заново."
+      : "";
+    return { stale };
+  }, [
+    autoRolesEnabled,
+    memberRoleIds,
+    botAutoRolesEnabled,
+    botUseSeparateRoles,
+    botRoleIds,
+    resources.roles,
+    resourcesLoading,
+    resources.errors?.roles,
+  ]);
+
+  const autoRolePickerShownRoles = useMemo(() => {
+    if (!autoRolePickerFor) return [];
+    let list = autoRolesGuildAssignable;
+    const q = autoRolePickerSearch.trim().toLowerCase();
+    if (q) {
+      list = list.filter(
+        (r) =>
+          r.name.toLowerCase().includes(q) || `@${r.name}`.toLowerCase().includes(q)
+      );
+    }
+    return list;
+  }, [
+    autoRolePickerFor,
+    autoRolesGuildAssignable,
+    memberRoleIds,
+    botRoleIds,
+    autoRolePickerSearch,
+  ]);
+
+  const handleAutoRolePickedFromPicker = useCallback(
+    (roleId: string) => {
+      if (autoRolePickerFor === "member") {
+        setMemberRoleIds((prev) =>
+          prev.includes(roleId) ? prev.filter((x) => x !== roleId) : [...prev, roleId]
+        );
+      } else if (autoRolePickerFor === "bot") {
+        setBotRoleIds((prev) =>
+          prev.includes(roleId) ? prev.filter((x) => x !== roleId) : [...prev, roleId]
+        );
+      }
+    },
+    [autoRolePickerFor]
+  );
+
   const previewVisualHydratedKeyRef = useRef<string | null>(null);
   const dmVisualHydratedKeyRef = useRef<string | null>(null);
   const farewellVisualHydratedKeyRef = useRef<string | null>(null);
@@ -4010,8 +4596,6 @@ export function DashboardGuildPageClient({
       farewellImageDataUrl,
       farewellImageFilename,
       channelId,
-      humanRoleId,
-      botRoleId,
       skipBotAccounts,
       welcomeDeliveryMode,
       welcomeDmMessage,
@@ -4040,6 +4624,18 @@ export function DashboardGuildPageClient({
       textImageDataUrlExists: true,
       welcomeDmImageDataUrlExists: true,
       imageCardExists: true,
+      autoRolesEnabled,
+      memberRoleIds,
+      waitForMembershipScreening,
+      memberDelayEnabled,
+      memberDelayValue,
+      memberDelayUnit,
+      botAutoRolesEnabled,
+      botUseSeparateRoles,
+      botRoleIds,
+      botDelayEnabled,
+      botDelayValue,
+      botDelayUnit,
     }),
     [
       welcomeEnabled,
@@ -4049,8 +4645,6 @@ export function DashboardGuildPageClient({
       farewellImageDataUrl,
       farewellImageFilename,
       channelId,
-      humanRoleId,
-      botRoleId,
       skipBotAccounts,
       welcomeDeliveryMode,
       welcomeDmMessage,
@@ -4072,6 +4666,18 @@ export function DashboardGuildPageClient({
       welcomeDmImageDataUrl,
       imageCard,
       bootstrap?.viewer?.avatarUrl,
+      autoRolesEnabled,
+      memberRoleIds,
+      waitForMembershipScreening,
+      memberDelayEnabled,
+      memberDelayValue,
+      memberDelayUnit,
+      botAutoRolesEnabled,
+      botUseSeparateRoles,
+      botRoleIds,
+      botDelayEnabled,
+      botDelayValue,
+      botDelayUnit,
     ]
   );
 
@@ -4371,14 +4977,25 @@ export function DashboardGuildPageClient({
 
   const handleRevertChanges = () => {
     if (!lastSavedConfig) return;
+    setAutoRolesSaveErrors({ member: "", bot: "" });
     setFarewellEnabled(lastSavedConfig.farewellEnabled);
     setFarewellChannelId(lastSavedConfig.farewellChannelId);
     setFarewellMessage(lastSavedConfig.farewellMessage);
     setFarewellImageDataUrl(lastSavedConfig.farewellImageDataUrl);
     setFarewellImageFilename(lastSavedConfig.farewellImageFilename);
     setChannelId(lastSavedConfig.channelId);
-    setHumanRoleId(lastSavedConfig.humanRoleId);
-    setBotRoleId(lastSavedConfig.botRoleId);
+    setAutoRolesEnabled(lastSavedConfig.autoRolesEnabled);
+    setMemberRoleIds([...lastSavedConfig.memberRoleIds]);
+    setWaitForMembershipScreening(lastSavedConfig.waitForMembershipScreening);
+    setMemberDelayEnabled(lastSavedConfig.memberDelayEnabled);
+    setMemberDelayValue(lastSavedConfig.memberDelayValue);
+    setMemberDelayUnit(lastSavedConfig.memberDelayUnit);
+    setBotAutoRolesEnabled(lastSavedConfig.botAutoRolesEnabled);
+    setBotUseSeparateRoles(lastSavedConfig.botUseSeparateRoles);
+    setBotRoleIds([...lastSavedConfig.botRoleIds]);
+    setBotDelayEnabled(lastSavedConfig.botDelayEnabled);
+    setBotDelayValue(lastSavedConfig.botDelayValue);
+    setBotDelayUnit(lastSavedConfig.botDelayUnit);
     setWelcomeEnabled(lastSavedConfig.welcomeEnabled);
     setSkipBotAccounts(lastSavedConfig.skipBotAccounts);
     setWelcomeDeliveryMode(lastSavedConfig.welcomeDeliveryMode);
@@ -4414,7 +5031,26 @@ export function DashboardGuildPageClient({
 
   const handleSave = async () => {
     if (!isDirty) return;
+    const hasMeaningfulBotPath =
+      autoRolesEnabled && botAutoRolesEnabled && botUseSeparateRoles && botRoleIds.length > 0;
+    const memberError =
+      autoRolesEnabled && memberRoleIds.length === 0 && !hasMeaningfulBotPath
+        ? "Выберите хотя бы одну роль."
+        : "";
+    const botError =
+      autoRolesEnabled && botAutoRolesEnabled && botUseSeparateRoles && botRoleIds.length === 0
+        ? "Выберите хотя бы одну роль для ботов."
+        : "";
+    if (memberError || botError) {
+      setAutoRolesSaveErrors({ member: memberError, bot: botError });
+      setActiveSection("autoRoles");
+      return;
+    }
+    setAutoRolesSaveErrors({ member: "", bot: "" });
     setIsSaving(true);
+    const legacyHumanId = memberRoleIds[0] ?? "";
+    const legacyBotId =
+      botAutoRolesEnabled && botUseSeparateRoles ? botRoleIds[0] ?? "" : legacyHumanId;
     const data = {
       welcomeEnabled,
       farewellEnabled,
@@ -4423,8 +5059,8 @@ export function DashboardGuildPageClient({
       farewellImageDataUrl,
       farewellImageFilename,
       channelId,
-      humanRoleId,
-      botRoleId,
+      humanRoleId: legacyHumanId,
+      botRoleId: legacyBotId,
       skipBotAccounts,
       welcomeDeliveryMode,
       welcomeDmMessage,
@@ -4446,6 +5082,18 @@ export function DashboardGuildPageClient({
       embedImageDataUrl,
       embedFields: embedFieldsToPersisted(embedFields),
       imageCard,
+      autoRolesEnabled,
+      memberRoleIds,
+      waitForMembershipScreening,
+      memberDelayEnabled,
+      memberDelayValue,
+      memberDelayUnit,
+      botAutoRolesEnabled,
+      botUseSeparateRoles,
+      botRoleIds,
+      botDelayEnabled,
+      botDelayValue,
+      botDelayUnit,
     };
     try {
       const res = await fetch(`/api/config/${guildId}`, {
@@ -4896,6 +5544,100 @@ export function DashboardGuildPageClient({
         )
       : null;
 
+  const autoRolePickerPortal =
+    pickerPortalReady && autoRolePickerFor && autoRolePickerLayout
+      ? createPortal(
+          <div
+            className="fixed z-[270] isolation-isolate"
+            style={{
+              left: `${autoRolePickerLayout.left}px`,
+              top: `${autoRolePickerLayout.top}px`,
+              width: `${autoRolePickerLayout.width}px`,
+            }}
+          >
+            <div
+              ref={autoRolePickerPanelRef}
+              onMouseDown={(e) => e.stopPropagation()}
+              className="ds-liquid-list w-full rounded-xl p-2"
+              style={{
+                background: "rgba(18, 22, 36, 0.42)",
+                backdropFilter: "blur(20px)",
+                WebkitBackdropFilter: "blur(20px)",
+                border: "1px solid rgba(255,255,255,0.12)",
+                boxShadow: "0 16px 48px rgba(0,0,0,0.35)",
+              }}
+            >
+              <input
+                value={autoRolePickerSearch}
+                onChange={(e) => setAutoRolePickerSearch(e.target.value)}
+                placeholder="Поиск: Роль"
+                className="ds-input mb-2.5 text-sm"
+                aria-label="Поиск роли"
+              />
+              {resourcesLoading ? (
+                <p className="py-8 text-center text-[13px] text-zinc-500">Загрузка…</p>
+              ) : resources.errors?.roles ? (
+                <p
+                  className="py-8 text-center text-[13px] text-amber-400/90"
+                  title={resources.errors.roles}
+                  role="status"
+                >
+                  Роли не загрузились
+                </p>
+              ) : autoRolePickerShownRoles.length === 0 ? (
+                <p className="py-8 text-center text-[13px] text-zinc-500">Нет ролей</p>
+              ) : (
+                <div
+                  className="space-y-0.5 overflow-y-auto p-0.5"
+                  style={{
+                    maxHeight: Math.max(96, autoRolePickerLayout.maxHeight - 80),
+                  }}
+                  role="listbox"
+                  aria-label="Выбор роли"
+                >
+                  {autoRolePickerShownRoles.map((role) => (
+                    <button
+                      key={role.id}
+                      type="button"
+                      role="option"
+                      aria-selected={
+                        autoRolePickerFor === "member"
+                          ? memberRoleIds.includes(role.id)
+                          : botRoleIds.includes(role.id)
+                      }
+                      onMouseDown={(e) => e.preventDefault()}
+                      onClick={() => handleAutoRolePickedFromPicker(role.id)}
+                      className={`ds-liquid-list-item flex min-h-[2.1rem] w-full items-center gap-2.5 rounded-lg px-3 py-2 text-left text-sm transition ${
+                        (autoRolePickerFor === "member"
+                          ? memberRoleIds.includes(role.id)
+                          : botRoleIds.includes(role.id))
+                          ? "bg-white/[0.07] text-zinc-100"
+                          : "text-zinc-300 hover:bg-white/[0.08]"
+                      }`}
+                    >
+                      <span
+                        className="h-2 w-2 shrink-0 rounded-full ring-1 ring-white/25"
+                        style={{ backgroundColor: discordRoleDotFill(role.color) }}
+                        aria-hidden
+                      />
+                      <span className="truncate text-zinc-100">{role.name}</span>
+                      {(autoRolePickerFor === "member"
+                        ? memberRoleIds.includes(role.id)
+                        : botRoleIds.includes(role.id)) ? (
+                        <span className="ml-auto text-[10px] text-violet-300/90" aria-hidden>
+                          ✓
+                        </span>
+                      ) : null}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>,
+          document.body
+        )
+      : null;
+
   return (
     <main className="flex min-h-0 min-w-0 flex-1 flex-col p-6 pb-28 text-white">
       <WelcomeCardPreviewFontFaces fontKeys={availableWelcomeCardFontKeys} />
@@ -4956,7 +5698,7 @@ export function DashboardGuildPageClient({
             >
             <nav className="flex flex-col gap-0.5" aria-label="Навигация по разделам">
               {SECTION_ITEMS.map(({ id, navLabel }) =>
-                id === "welcome" || id === "farewell" ? (
+                id === "welcome" || id === "farewell" || id === "autoRoles" ? (
                   <div
                     key={id}
                     className={`flex w-full items-center gap-1 rounded-lg pr-1.5 transition focus-within:outline-none ${
@@ -4982,18 +5724,41 @@ export function DashboardGuildPageClient({
                     </button>
                     <CompactSwitch
                       size="sidebar"
-                      checked={id === "welcome" ? welcomeEnabled : farewellEnabled}
+                      checked={
+                        id === "welcome"
+                          ? welcomeEnabled
+                          : id === "farewell"
+                            ? farewellEnabled
+                            : autoRolesEnabled
+                      }
                       onCheckedChange={(next) => {
                         if (id === "welcome") {
                           setWelcomeEnabled(next);
                           setActiveSection("welcome");
                           return;
                         }
-                        setFarewellEnabled(next);
-                        setActiveSection("farewell");
+                        if (id === "farewell") {
+                          setFarewellEnabled(next);
+                          setActiveSection("farewell");
+                          return;
+                        }
+                        setAutoRolesEnabled(next);
+                        setActiveSection("autoRoles");
                       }}
-                      title={id === "welcome" ? welcomeModuleCopy.sidebarWelcomeToggleAria : "Включить прощание"}
-                      aria-label={id === "welcome" ? welcomeModuleCopy.sidebarWelcomeToggleAria : "Включить прощание"}
+                      title={
+                        id === "welcome"
+                          ? welcomeModuleCopy.sidebarWelcomeToggleAria
+                          : id === "farewell"
+                            ? "Включить прощание"
+                            : "Включить авто-роли"
+                      }
+                      aria-label={
+                        id === "welcome"
+                          ? welcomeModuleCopy.sidebarWelcomeToggleAria
+                          : id === "farewell"
+                            ? "Включить прощание"
+                            : "Включить авто-роли"
+                      }
                       className="self-center motion-reduce:transition-none"
                     />
                   </div>
@@ -6590,36 +7355,412 @@ export function DashboardGuildPageClient({
                     subtitle={activeSectionMeta.subtitle}
                     defaultOpen
                   >
-                    <div className="space-y-5">
-                      {!resourcesLoading && resources.errors?.roles ? (
-                        <p
-                          className="text-xs text-amber-400/90"
-                          title={resources.errors.roles}
-                          role="status"
-                        >
-                          Роли не загрузились
-                        </p>
+                    <div className="relative overflow-hidden rounded-2xl">
+                      <div
+                        className={`welcome-settings-stack${
+                          !autoRolesEnabled
+                            ? " pointer-events-none opacity-[0.5] saturate-[0.55] brightness-[0.72]"
+                            : ""
+                        }`}
+                      >
+                        {!resourcesLoading && resources.errors?.roles ? (
+                          <div className="welcome-settings-module px-4 py-3 sm:px-5">
+                            <p
+                              className="text-xs text-amber-400/90"
+                              title={resources.errors.roles}
+                              role="status"
+                            >
+                              Роли не загрузились
+                            </p>
+                          </div>
+                        ) : null}
+                        {autoRolesEnabled && autoRolesValidationMessages.stale ? (
+                          <div
+                            className="welcome-settings-module border-b border-white/[0.05] px-4 py-3 sm:px-5"
+                            role="alert"
+                          >
+                            <p className="text-[13px] leading-snug text-amber-400/95">
+                              {autoRolesValidationMessages.stale}
+                            </p>
+                          </div>
+                        ) : null}
+
+                        <section className="welcome-settings-module px-4 py-4 sm:px-5 sm:py-4">
+                          <p className="ds-kicker">Роли</p>
+                          <p className="welcome-help-text mt-1.5 max-w-prose">
+                            Эти роли будут применены к участникам, которые присоединяются к серверу.
+                          </p>
+                          <div
+                            ref={autoRoleMemberSurfaceRef}
+                            className="mt-3 flex min-h-[2.75rem] flex-wrap items-center gap-2 rounded-xl border border-white/[0.08] bg-white/[0.02] px-3 py-2"
+                          >
+                            {memberRoleIds.length === 0 ? (
+                              <>
+                                <button
+                                  ref={autoRoleMemberPlusRef}
+                                  type="button"
+                                  onClick={() =>
+                                    setAutoRolePickerFor((p) => (p === "member" ? null : "member"))
+                                  }
+                                  disabled={resourcesLoading || Boolean(resources.errors?.roles)}
+                                  className="inline-flex h-8 w-8 shrink-0 cursor-pointer items-center justify-center rounded-full border border-white/[0.1] bg-white/[0.04] text-zinc-300 transition hover:border-white/[0.14] hover:bg-white/[0.07] hover:text-zinc-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)] focus-visible:ring-offset-2 focus-visible:ring-offset-[rgba(9,9,15,0.96)] disabled:cursor-not-allowed disabled:opacity-45"
+                                  aria-label="Добавить роль для участников"
+                                  title="Добавить роль"
+                                >
+                                  <Plus className="h-4 w-4" aria-hidden />
+                                </button>
+                                <span className="text-[13px] text-zinc-500">Роли не назначены</span>
+                              </>
+                            ) : (
+                              <>
+                                {memberRoleIds.map((rid) => {
+                                  const role = resources.roles.find((r) => r.id === rid);
+                                  const label = role?.name ?? "Неизвестная роль";
+                                  const fill = discordRoleDotFill(role?.color);
+                                  return (
+                                    <button
+                                      key={rid}
+                                      type="button"
+                                      onClick={() =>
+                                        setMemberRoleIds((prev) => prev.filter((x) => x !== rid))
+                                      }
+                                      className="group inline-flex max-w-full items-center gap-1.5 rounded-full border border-white/15 bg-zinc-950/40 py-0.5 pl-2 pr-2.5 text-[12px] font-medium leading-tight text-zinc-100 shadow-sm transition hover:bg-zinc-950/55"
+                                      style={{
+                                        borderColor: role ? discordRoleDotFill(role.color) : undefined,
+                                      }}
+                                      aria-label={`Удалить роль ${label}`}
+                                    >
+                                      <span
+                                        className="relative flex h-4 w-4 shrink-0 items-center justify-center"
+                                        aria-hidden
+                                      >
+                                        <span
+                                          className="absolute h-2 w-2 rounded-full ring-1 ring-white/25 transition group-hover:opacity-0"
+                                          style={{ backgroundColor: fill }}
+                                        />
+                                        <X className="absolute h-3.5 w-3.5 text-zinc-200 opacity-0 transition group-hover:opacity-100" />
+                                      </span>
+                                      <span className="min-w-0 truncate">{label}</span>
+                                    </button>
+                                  );
+                                })}
+                                <button
+                                  ref={autoRoleMemberPlusRef}
+                                  type="button"
+                                  onClick={() =>
+                                    setAutoRolePickerFor((p) => (p === "member" ? null : "member"))
+                                  }
+                                  disabled={resourcesLoading || Boolean(resources.errors?.roles)}
+                                  className="inline-flex h-8 w-8 shrink-0 cursor-pointer items-center justify-center rounded-full border border-white/[0.1] bg-white/[0.04] text-zinc-300 transition hover:border-white/[0.14] hover:bg-white/[0.07] hover:text-zinc-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)] focus-visible:ring-offset-2 focus-visible:ring-offset-[rgba(9,9,15,0.96)] disabled:cursor-not-allowed disabled:opacity-45"
+                                  aria-label="Добавить роль для участников"
+                                  title="Добавить роль"
+                                >
+                                  <Plus className="h-4 w-4" aria-hidden />
+                                </button>
+                              </>
+                            )}
+                          </div>
+                          {autoRolesSaveErrors.member ? (
+                            <p className="mt-2 text-[13px] leading-snug text-rose-400/95" role="alert">
+                              {autoRolesSaveErrors.member}
+                            </p>
+                          ) : null}
+
+                          <div className="mt-4 space-y-4 border-t border-white/[0.05] pt-4">
+                            <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between sm:gap-4">
+                              <div className="flex min-w-0 flex-1 gap-3">
+                                <ShieldCheck
+                                  className="mt-0.5 h-5 w-5 shrink-0 text-zinc-400"
+                                  aria-hidden
+                                />
+                                <div className="min-w-0">
+                                  <p className="text-[13px] font-medium leading-snug text-zinc-100">
+                                    Подождать, пока участник примет{" "}
+                                    <a
+                                      href={DISCORD_MEMBERSHIP_SCREENING_HELP_RU}
+                                      target="_blank"
+                                      rel="noopener noreferrer"
+                                      className="text-violet-300 underline decoration-violet-400/50 underline-offset-2 transition hover:text-violet-200"
+                                    >
+                                      показ правил
+                                    </a>
+                                  </p>
+                                  <p className="welcome-help-text mt-1">
+                                    Сначала ожидание правил, затем задержка из блока ниже (если включена).
+                                  </p>
+                                </div>
+                              </div>
+                              <CompactSwitch
+                                checked={waitForMembershipScreening}
+                                onCheckedChange={setWaitForMembershipScreening}
+                                aria-label="Ждать показ правил"
+                                title="Ждать показ правил"
+                              />
+                            </div>
+
+                            <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between sm:gap-4">
+                              <div className="flex min-w-0 flex-1 gap-3">
+                                <Clock className="mt-0.5 h-5 w-5 shrink-0 text-zinc-400" aria-hidden />
+                                <div className="min-w-0">
+                                  <p className="text-[13px] font-medium leading-snug text-zinc-100">
+                                    Задержка присвоения роли
+                                  </p>
+                                  <p className="welcome-help-text mt-1">
+                                    Применяется ко всем выбранным ролям участника.
+                                  </p>
+                                </div>
+                              </div>
+                              <CompactSwitch
+                                checked={memberDelayEnabled}
+                                onCheckedChange={setMemberDelayEnabled}
+                                aria-label="Задержка для участников"
+                                title="Задержка для участников"
+                              />
+                            </div>
+                            <div
+                              className={`grid transition-all duration-250 ease-out motion-reduce:transition-none ${
+                                memberDelayEnabled
+                                  ? "mt-0.5 grid-rows-[1fr] opacity-100 translate-y-0"
+                                  : "grid-rows-[0fr] opacity-0 -translate-y-1 pointer-events-none"
+                              }`}
+                            >
+                              <div className="overflow-hidden">
+                                  <div className="pl-0 pt-0.5 sm:pl-8">
+                                    <AutoRoleDelayControl
+                                      value={memberDelayValue}
+                                      unit={memberDelayUnit}
+                                      onValueChange={setMemberDelayValue}
+                                      onUnitChange={setMemberDelayUnit}
+                                      unitOptions={autoRoleDelayUnitOptions}
+                                      valueInputId="member-delay-value"
+                                      valueAriaLabel="Значение задержки"
+                                      unitAriaLabel="Единица задержки"
+                                    />
+                                  </div>
+                              </div>
+                            </div>
+                          </div>
+                        </section>
+
+                        <section className="welcome-settings-module px-4 py-4 sm:px-5 sm:py-4">
+                          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between sm:gap-4">
+                            <div className="flex min-w-0 flex-1 items-start gap-3">
+                              <Bot className="mt-0.5 h-5 w-5 shrink-0 text-zinc-400" aria-hidden />
+                              <div className="min-w-0">
+                                <p className="ds-kicker">Роли для ботов</p>
+                                <p className="welcome-help-text mt-1 max-w-prose">
+                                  Отдельные правила для ботов, добавляемых на сервер.
+                                </p>
+                              </div>
+                            </div>
+                            <CompactSwitch
+                              checked={botAutoRolesEnabled}
+                              onCheckedChange={(next) => {
+                                setBotAutoRolesEnabled(next);
+                                if (!next) {
+                                  setBotUseSeparateRoles(false);
+                                  setBotDelayEnabled(false);
+                                }
+                              }}
+                              aria-label="Назначать роли для ботов"
+                              title="Назначать роли для ботов"
+                            />
+                          </div>
+
+                          <div
+                            className={`grid transition-all duration-250 ease-out motion-reduce:transition-none ${
+                              botAutoRolesEnabled
+                                ? "mt-4 grid-rows-[1fr] opacity-100 translate-y-0"
+                                : "grid-rows-[0fr] opacity-0 -translate-y-1 pointer-events-none"
+                            }`}
+                          >
+                            <div className="overflow-hidden">
+                            <div className="space-y-4 border-t border-white/[0.05] pt-4">
+                              <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between sm:gap-4">
+                                <div className="flex min-w-0 flex-1 gap-3">
+                                  <Layers className="mt-0.5 h-5 w-5 shrink-0 text-zinc-400" aria-hidden />
+                                  <div className="min-w-0">
+                                    <p className="text-[13px] font-medium text-zinc-100">
+                                      Присвоить ботам другие роли
+                                    </p>
+                                    <p className="welcome-help-text mt-1">
+                                      Если выключено, боты получают тот же набор, что и обычные
+                                      участники.
+                                    </p>
+                                  </div>
+                                </div>
+                                <CompactSwitch
+                                  checked={botUseSeparateRoles}
+                                  onCheckedChange={setBotUseSeparateRoles}
+                                  aria-label="Отдельные роли для ботов"
+                                  title="Отдельные роли для ботов"
+                                />
+                              </div>
+
+                              <div
+                                className={`grid transition-all duration-250 ease-out motion-reduce:transition-none ${
+                                  botUseSeparateRoles
+                                    ? "grid-rows-[1fr] opacity-100 translate-y-0"
+                                    : "grid-rows-[0fr] opacity-0 -translate-y-1 pointer-events-none"
+                                }`}
+                              >
+                                <div className="overflow-hidden">
+                                <div
+                                  ref={autoRoleBotSurfaceRef}
+                                  className="flex min-h-[2.75rem] flex-wrap items-center gap-2 rounded-xl border border-white/[0.08] bg-white/[0.02] px-3 py-2"
+                                >
+                                  {botRoleIds.length === 0 ? (
+                                    <>
+                                      <button
+                                        ref={autoRoleBotPlusRef}
+                                        type="button"
+                                        onClick={() =>
+                                          setAutoRolePickerFor((p) => (p === "bot" ? null : "bot"))
+                                        }
+                                        disabled={resourcesLoading || Boolean(resources.errors?.roles)}
+                                        className="inline-flex h-8 w-8 shrink-0 cursor-pointer items-center justify-center rounded-full border border-white/[0.1] bg-white/[0.04] text-zinc-300 transition hover:border-white/[0.14] hover:bg-white/[0.07] hover:text-zinc-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)] focus-visible:ring-offset-2 focus-visible:ring-offset-[rgba(9,9,15,0.96)] disabled:cursor-not-allowed disabled:opacity-45"
+                                        aria-label="Добавить роль для ботов"
+                                        title="Добавить роль"
+                                      >
+                                        <Plus className="h-4 w-4" aria-hidden />
+                                      </button>
+                                      <span className="text-[13px] text-zinc-500">Роли не назначены</span>
+                                    </>
+                                  ) : (
+                                    <>
+                                      {botRoleIds.map((rid) => {
+                                        const role = resources.roles.find((r) => r.id === rid);
+                                        const label = role?.name ?? "Неизвестная роль";
+                                        const fill = discordRoleDotFill(role?.color);
+                                        return (
+                                          <button
+                                            key={rid}
+                                            type="button"
+                                            onClick={() =>
+                                              setBotRoleIds((prev) => prev.filter((x) => x !== rid))
+                                            }
+                                            className="group inline-flex max-w-full items-center gap-1.5 rounded-full border border-white/15 bg-zinc-950/40 py-0.5 pl-2 pr-2.5 text-[12px] font-medium leading-tight text-zinc-100 shadow-sm transition hover:bg-zinc-950/55"
+                                            style={{
+                                              borderColor: role
+                                                ? discordRoleDotFill(role.color)
+                                                : undefined,
+                                            }}
+                                            aria-label={`Удалить роль бота ${label}`}
+                                          >
+                                            <span
+                                              className="relative flex h-4 w-4 shrink-0 items-center justify-center"
+                                              aria-hidden
+                                            >
+                                              <span
+                                                className="absolute h-2 w-2 rounded-full ring-1 ring-white/25 transition group-hover:opacity-0"
+                                                style={{ backgroundColor: fill }}
+                                              />
+                                              <X className="absolute h-3.5 w-3.5 text-zinc-200 opacity-0 transition group-hover:opacity-100" />
+                                            </span>
+                                            <span className="min-w-0 truncate">{label}</span>
+                                          </button>
+                                        );
+                                      })}
+                                      <button
+                                        ref={autoRoleBotPlusRef}
+                                        type="button"
+                                        onClick={() =>
+                                          setAutoRolePickerFor((p) => (p === "bot" ? null : "bot"))
+                                        }
+                                        disabled={resourcesLoading || Boolean(resources.errors?.roles)}
+                                        className="inline-flex h-8 w-8 shrink-0 cursor-pointer items-center justify-center rounded-full border border-white/[0.1] bg-white/[0.04] text-zinc-300 transition hover:border-white/[0.14] hover:bg-white/[0.07] hover:text-zinc-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)] focus-visible:ring-offset-2 focus-visible:ring-offset-[rgba(9,9,15,0.96)] disabled:cursor-not-allowed disabled:opacity-45"
+                                        aria-label="Добавить роль для ботов"
+                                        title="Добавить роль"
+                                      >
+                                        <Plus className="h-4 w-4" aria-hidden />
+                                      </button>
+                                    </>
+                                  )}
+                                </div>
+                                {autoRolesSaveErrors.bot ? (
+                                  <p className="mt-2 text-[13px] leading-snug text-rose-400/95" role="alert">
+                                    {autoRolesSaveErrors.bot}
+                                  </p>
+                                ) : null}
+                                </div>
+                              </div>
+
+                              <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between sm:gap-4">
+                                <div className="flex min-w-0 flex-1 gap-3">
+                                  <Clock
+                                    className="mt-0.5 h-5 w-5 shrink-0 text-zinc-400"
+                                    aria-hidden
+                                  />
+                                  <div className="min-w-0">
+                                    <p className="text-[13px] font-medium leading-snug text-zinc-100">
+                                      Задержка присвоения роли для ботов
+                                    </p>
+                                    <p className="welcome-help-text mt-1">
+                                      Применяется ко всем ролям бота из текущего набора.
+                                    </p>
+                                  </div>
+                                </div>
+                                <CompactSwitch
+                                  checked={botDelayEnabled}
+                                  onCheckedChange={setBotDelayEnabled}
+                                  aria-label="Задержка для ботов"
+                                  title="Задержка для ботов"
+                                />
+                              </div>
+                              <div
+                                className={`grid transition-all duration-250 ease-out motion-reduce:transition-none ${
+                                  botDelayEnabled
+                                    ? "mt-0.5 grid-rows-[1fr] opacity-100 translate-y-0"
+                                    : "grid-rows-[0fr] opacity-0 -translate-y-1 pointer-events-none"
+                                }`}
+                              >
+                                <div className="overflow-hidden">
+                                  <div className="pl-0 pt-0.5 sm:pl-8">
+                                    <AutoRoleDelayControl
+                                      value={botDelayValue}
+                                      unit={botDelayUnit}
+                                      onValueChange={setBotDelayValue}
+                                      onUnitChange={setBotDelayUnit}
+                                      unitOptions={autoRoleDelayUnitOptions}
+                                      valueInputId="bot-delay-value"
+                                      valueAriaLabel="Значение задержки для ботов"
+                                      unitAriaLabel="Единица задержки для ботов"
+                                    />
+                                  </div>
+                                </div>
+                              </div>
+                            </div>
+                            </div>
+                          </div>
+                        </section>
+                      </div>
+                      {!autoRolesEnabled ? (
+                        <>
+                          <button
+                            type="button"
+                            className="absolute inset-0 z-[5] cursor-pointer border-0 bg-transparent p-0 shadow-none outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)] focus-visible:ring-offset-2 focus-visible:ring-offset-[rgba(9,9,15,0.96)]"
+                            aria-label="Авто-роли отключены. Нажмите, чтобы включить."
+                            onClick={() => setAutoRolesEnabled(true)}
+                          />
+                          <div
+                            className="pointer-events-none absolute left-1/2 top-1/2 z-[6] max-w-[min(92%,17.5rem)] -translate-x-1/2 -translate-y-1/2 px-3"
+                            role="status"
+                          >
+                            <p
+                              className="rounded-2xl px-3 py-1.5 text-center text-[12px] font-medium leading-snug tracking-[-0.01em] text-zinc-100/90"
+                              style={{
+                                background: "rgba(28, 26, 36, 0.42)",
+                                backdropFilter: "blur(14px) saturate(150%)",
+                                WebkitBackdropFilter: "blur(14px) saturate(150%)",
+                                border: "1px solid rgba(255,255,255,0.1)",
+                                boxShadow: "inset 0 1px 0 rgba(255,255,255,0.08)",
+                              }}
+                            >
+                              Авто-роли отключены. Нажмите, чтобы включить.
+                            </p>
+                          </div>
+                        </>
                       ) : null}
-                      <div>
-                        <p className="ds-kicker mb-2">Роль для участников</p>
-                        <CustomSelect
-                          value={humanRoleId}
-                          options={roleOptions}
-                          placeholder="Не выбрана"
-                          onChange={setHumanRoleId}
-                          ariaLabel="Роль для участников"
-                        />
-                      </div>
-                      <div>
-                        <p className="ds-kicker mb-2">Роль для ботов</p>
-                        <CustomSelect
-                          value={botRoleId}
-                          options={roleOptions}
-                          placeholder="Не выбрана"
-                          onChange={setBotRoleId}
-                          ariaLabel="Роль для ботов"
-                        />
-                      </div>
                     </div>
                   </CollapsibleSettingsSection>
                 ) : null}
@@ -6709,6 +7850,7 @@ export function DashboardGuildPageClient({
           </div>
         </div>
       ) : null}
+      {autoRolePickerPortal}
     </main>
   );
 }

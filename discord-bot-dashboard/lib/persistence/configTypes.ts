@@ -1,11 +1,15 @@
 import type { ImageCardGuildConfigMerged } from "@/lib/mergeImageCardConfig";
 
+export type AutoRoleDelayUnit = "seconds" | "minutes" | "hours" | "days";
+
 /** Пер-серверный конфиг welcome (как в shared-data/config.json). */
 export type GuildConfig = {
   /** Включено ли приветствие новых участников (дашборд; воркер может подхватить позже). */
   welcomeEnabled: boolean;
   channelId: string;
+  /** @deprecated Используйте memberRoleIds; сохраняется для совместимости (первый элемент массива). */
   humanRoleId: string;
+  /** @deprecated Используйте botRoleIds; сохраняется для совместимости. */
   botRoleId: string;
   skipBotAccounts: boolean;
   welcomeStyle: "text" | "embed" | "imageCard";
@@ -45,6 +49,23 @@ export type GuildConfig = {
   farewellImageDataUrl?: string;
   /** Оригинальное имя файла картинки прощания. */
   farewellImageFilename?: string;
+
+  /** Модуль авто-ролей: глобальный выключатель (sidebar). */
+  autoRolesEnabled?: boolean;
+  /** Роли, выдаваемые обычным участникам при входе. */
+  memberRoleIds?: string[];
+  /** Ждать завершения показа правил (membership screening). */
+  waitForMembershipScreening?: boolean;
+  memberDelayEnabled?: boolean;
+  memberDelayValue?: number;
+  memberDelayUnit?: AutoRoleDelayUnit;
+  /** Выдача ролей ботам при добавлении (по умолчанию выкл.). */
+  botAutoRolesEnabled?: boolean;
+  botUseSeparateRoles?: boolean;
+  botRoleIds?: string[];
+  botDelayEnabled?: boolean;
+  botDelayValue?: number;
+  botDelayUnit?: AutoRoleDelayUnit;
 };
 
 /** Корневой объект config.json: { guilds: { [guildId]: GuildConfig } }. */

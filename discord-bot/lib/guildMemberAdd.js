@@ -6,6 +6,11 @@ const { resolveSharedDataDir } = require("./resolveSharedDataDir");
 const { resolveWelcomeCardFontDir } = require("./resolveWelcomeCardFontDir");
 const configStore = require("./persistence/configStore");
 const { configFilePath } = require("./persistence/jsonConfigStore");
+const {
+  runMemberAutoRolesPipeline,
+  runBotAutoRolesPipeline,
+  assignAutoRole,
+} = require("./autoRolesRuntime");
 
 const IMAGE_CARD_FONT_KEYS = new Set([
   "inter",
@@ -234,35 +239,6 @@ function buildTemplateContext(member) {
     memberCount: member.guild.memberCount,
     dateStr: new Date().toLocaleDateString(),
   };
-}
-
-/**
- * @param {import('discord.js').GuildMember} member
- * @param {unknown} roleIdRaw
- * @param {'human' | 'bot'} kind
- */
-async function assignAutoRole(member, roleIdRaw, kind) {
-  if (!isNonEmptySnowflake(roleIdRaw)) {
-    console.log(`[autoRole] ${kind}: skipped (no valid role id)`);
-    return;
-  }
-  const roleId = /** @type {string} */ (roleIdRaw).trim();
-  try {
-    const role = await member.guild.roles.fetch(roleId).catch(() => null);
-    if (!role) {
-      console.warn(`[autoRole] ${kind}: role not found (${roleId})`);
-      return;
-    }
-    if (role.managed) {
-      console.warn(`[autoRole] ${kind}: role ${roleId} is managed, skip`);
-      return;
-    }
-    await member.roles.add(role, "Auto-role on guild join");
-    console.log(`[autoRole] ${kind}: assigned ${role.name} (${roleId}) to ${member.user.tag}`);
-  } catch (err) {
-    const e = /** @type {Error} */ (err);
-    console.warn(`[autoRole] ${kind}: failed for ${member.user.tag}:`, e.message);
-  }
 }
 
 /**
@@ -666,11 +642,12 @@ async function handleGuildMemberAdd(member) {
     console.log(`[welcome] guild config found for guild ${guildId}`);
 
     const isBot = member.user.bot === true;
+    const cfg = /** @type {Record<string, unknown>} */ (config);
 
     if (isBot) {
-      await assignAutoRole(member, config.botRoleId, "bot");
+      await runBotAutoRolesPipeline(member, cfg, guildId);
     } else {
-      await assignAutoRole(member, config.humanRoleId, "human");
+      await runMemberAutoRolesPipeline(member, cfg, guildId);
     }
 
     if (config.welcomeEnabled === false) {

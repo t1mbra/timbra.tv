@@ -2,6 +2,7 @@ require("dotenv").config();
 
 const { Client, GatewayIntentBits, Events } = require("discord.js");
 const { handleGuildMemberAdd } = require("./lib/guildMemberAdd");
+const { handleGuildMemberUpdate } = require("./lib/guildMemberUpdate");
 const { handleGuildMemberRemove } = require("./lib/guildMemberRemove");
 const { writeBotStateNow, scheduleBotStateWrite } = require("./lib/botState");
 
@@ -32,6 +33,10 @@ client.on(Events.GuildDelete, () => {
 
 client.on(Events.GuildMemberAdd, (member) => {
   void handleGuildMemberAdd(member);
+});
+
+client.on(Events.GuildMemberUpdate, (oldMember, newMember) => {
+  void handleGuildMemberUpdate(oldMember, newMember);
 });
 
 client.on(Events.GuildMemberRemove, (member) => {

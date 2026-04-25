@@ -1,7 +1,12 @@
 import { NextResponse } from "next/server";
 
 import { mergeImageCard } from "@/lib/mergeImageCardConfig";
-import type { GuildConfig, RootConfig } from "@/lib/persistence/configTypes";
+import { normalizeAutoRolesOnRead } from "@/lib/normalizeAutoRolesConfig";
+import type {
+  AutoRoleDelayUnit,
+  GuildConfig,
+  RootConfig,
+} from "@/lib/persistence/configTypes";
 import {
   readRawConfig,
   writeRawConfig,
@@ -11,6 +16,39 @@ import { resolveWelcomeCardFontDir } from "@/lib/resolveWelcomeCardFontDir";
 
 function availableImageCardFontKeys() {
   return listAvailableWelcomeCardFontKeys(resolveWelcomeCardFontDir());
+}
+
+function parseDelayUnit(raw: unknown, fallback: AutoRoleDelayUnit): AutoRoleDelayUnit {
+  const s = typeof raw === "string" ? raw.trim().toLowerCase() : "";
+  if (
+    s === "seconds" ||
+    s === "minutes" ||
+    s === "hours" ||
+    s === "days"
+  ) {
+    return s;
+  }
+  return fallback;
+}
+
+function parsePositiveInt(raw: unknown, fallback: number): number {
+  if (typeof raw === "number" && Number.isFinite(raw)) {
+    return Math.max(1, Math.floor(raw));
+  }
+  return fallback;
+}
+
+function parseSnowflakeArray(raw: unknown, guildId: string): string[] {
+  if (!Array.isArray(raw)) return [];
+  const re = /^\d{17,20}$/;
+  const out: string[] = [];
+  for (const x of raw) {
+    if (typeof x !== "string") continue;
+    const t = x.trim();
+    if (!re.test(t) || t === guildId) continue;
+    if (!out.includes(t)) out.push(t);
+  }
+  return out;
 }
 
 const defaultGuildConfig: GuildConfig = {
@@ -44,6 +82,18 @@ const defaultGuildConfig: GuildConfig = {
   farewellMessage: "{username} покинул сервер {server}. Будем скучать 🌙",
   farewellImageDataUrl: "",
   farewellImageFilename: "",
+  autoRolesEnabled: false,
+  memberRoleIds: [],
+  waitForMembershipScreening: false,
+  memberDelayEnabled: false,
+  memberDelayValue: 1,
+  memberDelayUnit: "seconds",
+  botAutoRolesEnabled: false,
+  botUseSeparateRoles: false,
+  botRoleIds: [],
+  botDelayEnabled: false,
+  botDelayValue: 1,
+  botDelayUnit: "seconds",
 };
 
 function normalizeWelcomeDeliveryMode(
@@ -116,9 +166,11 @@ export async function GET(
     const baseChannelId =
       typeof gc.channelId === "string" ? gc.channelId : defaultGuildConfig.channelId;
     const avail = availableImageCardFontKeys();
+    const autoRoles = normalizeAutoRolesOnRead(gc, guildId);
     return NextResponse.json({
       ...gc,
       ...mergeDeliveryWithDefaults(gc, baseMessage, baseChannelId),
+      ...autoRoles,
       farewellEnabled: gc.farewellEnabled === true,
       farewellChannelId:
         typeof gc.farewellChannelId === "string"
@@ -164,14 +216,41 @@ export async function POST(
     const mergedChannelId =
       typeof body.channelId === "string" ? body.channelId : "";
 
+    const memberRoleIds = parseSnowflakeArray(body.memberRoleIds, guildId);
+    const botRoleIds = parseSnowflakeArray(body.botRoleIds, guildId);
+    const autoRolesEnabled =
+      typeof body.autoRolesEnabled === "boolean"
+        ? body.autoRolesEnabled
+        : defaultGuildConfig.autoRolesEnabled;
+    const botAutoRolesEnabled =
+      typeof body.botAutoRolesEnabled === "boolean"
+        ? body.botAutoRolesEnabled
+        : defaultGuildConfig.botAutoRolesEnabled;
+    const botUseSeparateRoles =
+      typeof body.botUseSeparateRoles === "boolean"
+        ? body.botUseSeparateRoles
+        : defaultGuildConfig.botUseSeparateRoles;
+
+    const legacyHuman = memberRoleIds[0] ?? "";
+    const legacyBot =
+      botAutoRolesEnabled && botUseSeparateRoles
+        ? botRoleIds[0] ?? ""
+        : memberRoleIds[0] ?? "";
+
     const nextGuildConfig: GuildConfig = {
       welcomeEnabled:
         typeof body.welcomeEnabled === "boolean"
           ? body.welcomeEnabled
           : defaultGuildConfig.welcomeEnabled,
       channelId: mergedChannelId,
-      humanRoleId: body.humanRoleId ?? "",
-      botRoleId: body.botRoleId ?? "",
+      humanRoleId:
+        typeof body.humanRoleId === "string" && body.humanRoleId.trim()
+          ? body.humanRoleId.trim()
+          : legacyHuman,
+      botRoleId:
+        typeof body.botRoleId === "string" && body.botRoleId.trim()
+          ? body.botRoleId.trim()
+          : legacyBot,
       skipBotAccounts: body.skipBotAccounts ?? true,
       ...mergeDeliveryWithDefaults(body as Partial<GuildConfig>, mergedMessage, mergedChannelId),
       welcomeDmImageDataUrl:
@@ -234,6 +313,30 @@ export async function POST(
           ? body.farewellImageFilename
           : defaultGuildConfig.farewellImageFilename,
       imageCard: mergeImageCard(body.imageCard, { availableFontKeys: avail }),
+      autoRolesEnabled,
+      memberRoleIds,
+      waitForMembershipScreening: body.waitForMembershipScreening === true,
+      memberDelayEnabled: body.memberDelayEnabled === true,
+      memberDelayValue: parsePositiveInt(
+        body.memberDelayValue,
+        defaultGuildConfig.memberDelayValue ?? 1
+      ),
+      memberDelayUnit: parseDelayUnit(
+        body.memberDelayUnit,
+        defaultGuildConfig.memberDelayUnit ?? "seconds"
+      ),
+      botAutoRolesEnabled,
+      botUseSeparateRoles,
+      botRoleIds,
+      botDelayEnabled: body.botDelayEnabled === true,
+      botDelayValue: parsePositiveInt(
+        body.botDelayValue,
+        defaultGuildConfig.botDelayValue ?? 1
+      ),
+      botDelayUnit: parseDelayUnit(
+        body.botDelayUnit,
+        defaultGuildConfig.botDelayUnit ?? "seconds"
+      ),
     };
 
     rootConfig.guilds[guildId] = nextGuildConfig;
