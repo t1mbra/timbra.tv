@@ -1,59 +1,96 @@
-# Состояние репозитория `timbra.tv`
+# PROJECT STATE
 
-## Заморозка релиза: Timbrabot MVP **v0.1.0-timbrabot-mvp**
+## Mainline and Branch Reality
 
-Текущая рабочая версия стека **`discord-bot/`** + **`discord-bot-dashboard/`** + **`shared-data/`** зафиксирована как **замороженный MVP** (см. `CHANGELOG.md`). Дальнейшие изменения функциональности выходят за рамки этой контрольной точки, если не оговорено отдельно.
+- Исторически `feature/postgres-persistence` вышла за рамки исходной задачи и стала de facto интеграционной веткой.
+- Текущий основной mainline проекта: `develop`.
+- Railway production должен быть направлен на `develop`.
+- Старые `feature/*` и `hotfix/*` ветки считаются историческими и не являются текущим source of truth.
 
-### Известные ограничения (MVP)
+## Repository Scope and Focus
 
-- Персистентность **shared-data** основана на **локальной файловой системе** (`config.json`, `bot-state.json`, ассеты, шрифты).
-- Если бот и дашборд работают в **разных контейнерах** без общего тома, пути по умолчанию к `shared-data` не совпадут — нужен **общий volume** или **база данных** вместо разнесённых файлов.
-- Режим **imageCard** требует локальных файлов **TTF** в `shared-data/fonts/welcome-card/` (whitelist в коде дашборда).
-- Этот релиз — **MVP**, не финальная production-архитектура (сессии, масштабирование, секреты — см. Known Problems в `discord-bot-dashboard/PROJECT_STATE.md`).
+Репозиторий включает:
 
-## Обзор
+- `discord-bot`
+- `discord-bot-dashboard`
+- `website`
 
-В корне зафиксировано состояние **личного сайта Timbra** в папке `website/` (только фронтенд, без бэкенд-интеграций).
+Текущий приоритет разработки:
 
-## Проект: `website/` — Next.js (личный сайт)
+- сначала стабилизация и развитие `discord-bot` + `discord-bot-dashboard`
+- затем развитие `website` как media hub
 
-### Стек
+Именование:
 
-- Next.js 16 (App Router), React 19, TypeScript
-- Tailwind CSS 4
-- Шрифты: Manrope (текст), Lora (заголовки), подмножества latin + cyrillic
+- имя бота: `Рогатик`
 
-### Маршруты
+## Current Released Baseline
 
-| Путь | Содержание |
-|------|------------|
-| `/` | Главная (медиа-хаб): герой, утилита (слот/статус/календарь/Discord), 4 карточки-раздела, стримы, календарь, новости, сообщество, о себе, бот |
-| `/about` | О себе: козочка-стример/блогер, уют, животные, атмосферные игры |
-| `/streams` | Стримы: демо-карточки «ближайшие / недавние», зона-плейсхолдер под плеер |
-| `/calendar` | Календарь: визуальная сетка месяца + текст про будущие подписки Google / Apple / Microsoft |
-| `/news` | Новости: каркас ленты + упоминание будущей синдикации (без реализации) |
-| `/bot` | Discord-бот как часть экосистемы + неактивная кнопка входа в панель |
-| `/links` | Хаб ссылок: карточки платформ с неактивными кнопками |
+- `v0.6.0` - Welcome delivery modes
+- `v0.6.1` - fonts / message images / editor hotfixes
+- `v0.6.2` - image upload compression
+- `v0.7.0` - Farewell messages
+- `v0.8.0` - Auto-roles core
 
-### Компоненты и дизайн
+## Current Bot and Dashboard State
 
-- Оболочка: `SiteShell`, `SiteHeader`, `SiteFooter`, `MobileNav`, `Container`
-- Главная: `HomeUtilityStrip`, `HomeQuickNav`, секции в `components/sections/*` — мало текста, упор на действия и сетку; `SectionHeading` с режимом `compact`
-- UI: `Button` / `ButtonLink`, `Card` (опции `glow`, `hover`), `SectionHeading`, `PageIntro`
-- Стримы: `StreamBlockCard` + демо-данные в `lib/placeholders.ts`
-- Календарь: `CalendarPlaceholder` — статическая сетка месяца без API
-- Тема: `app/globals.css` — тёмная палитра, градиенты, шум, утилиты `surface-gradient-ring`, `hero-stars`
-- Контент на русском; ссылка «Перейти к содержимому»
+Текущая продуктовая база в `discord-bot` + `discord-bot-dashboard`:
 
-### Не реализовано (намеренно)
+- `Welcome`
+- `Farewell`
+- `Auto-roles core`
 
-- Бэкенд, OAuth, вебхуки, встраивание стримов, реальные URL соцсетей
+## Welcome: Current State
 
-### Следующий шаг
+Реализовано:
 
-- Подключить данные и интеграции по мере готовности API и политики платформ
+- shared message editor
+- delivery modes
+- image/message attachments
+- style settings
 
-## Другие проекты
+Открытая работа:
 
-- `discord-bot-dashboard/` — см. локальный `PROJECT_STATE.md` (конфиг только через `/api/config/[guildId]` и `shared-data/config.json`; legacy `/api/config` и `data/config.json` удалены). **MVP зафиксирован:** `v0.1.0-timbrabot-mvp` (`CHANGELOG.md`).
-- `discord-bot/` — Node.js + discord.js: при `GuildMemberAdd` читает `shared-data/config.json`, выдаёт авто-роли (`humanRoleId` / `botRoleId` независимо от приветствия), шлёт welcome в `channelId` с подстановками; `skipBotAccounts` только отключает приветствие для ботов; стили `text` / `embed` / **`imageCard`** (PNG через `@napi-rs/canvas`, как в дашборде). **MVP зафиксирован:** `v0.1.0-timbrabot-mvp` (`CHANGELOG.md`).
+- random welcome messages
+- баги и polish в `Стиль приветствия`
+- проблемы в card/image-card зоне
+
+## Farewell: Current State
+
+Реализовано как lifecycle-модуль:
+
+- канал
+- сообщение
+- send test
+- live runtime
+
+## Auto-roles: Current State
+
+Актуальная продуктовая модель:
+
+- `autoRolesEnabled`
+- `memberRoleIds`
+- `waitForMembershipScreening`
+- member delay
+- `botAutoRolesEnabled`
+- `botUseSeparateRoles`
+- `botRoleIds`
+- bot delay
+
+Операционные правила:
+
+- назначение ролей ботам по умолчанию выключено
+- при включении bot auto-roles боты могут использовать общий список ролей
+- при включении separate bot roles боты используют отдельный список ролей
+
+Совместимость:
+
+- legacy single-role поля используются только для backward compatibility
+- legacy single-role поля больше не являются основной продуктовой моделью
+
+## Current Open Work
+
+- `/servers` через `bot-state.json`
+- random welcome messages
+- auto-roles synchronization
+- баги в `Стиль приветствия` / image-card area
