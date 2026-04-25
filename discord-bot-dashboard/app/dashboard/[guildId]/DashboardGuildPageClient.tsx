@@ -590,8 +590,7 @@ const SECTION_ITEMS = [
     id: "autoRoles" as const,
     navLabel: "Авто-роли",
     heading: "Авто-роли",
-    subtitle:
-      "Автоматическая выдача ролей новым участникам при входе на сервер.",
+    subtitle: "Рогатик выдаст выбранные роли новым участникам сервера.",
   },
 ] as const;
 
@@ -7388,7 +7387,7 @@ export function DashboardGuildPageClient({
                         <section className="welcome-settings-module px-4 py-4 sm:px-5 sm:py-4">
                           <p className="ds-kicker">Роли</p>
                           <p className="welcome-help-text mt-1.5 max-w-prose">
-                            Эти роли будут применены к участникам, которые присоединяются к серверу.
+                            Выдаются всем новым участникам сервера
                           </p>
                           <div
                             ref={autoRoleMemberSurfaceRef}
@@ -7475,7 +7474,7 @@ export function DashboardGuildPageClient({
                                 />
                                 <div className="min-w-0">
                                   <p className="text-[13px] font-medium leading-snug text-zinc-100">
-                                    Подождать, пока участник примет{" "}
+                                    Ждать принятия{" "}
                                     <a
                                       href={DISCORD_MEMBERSHIP_SCREENING_HELP_RU}
                                       target="_blank"
@@ -7486,7 +7485,7 @@ export function DashboardGuildPageClient({
                                     </a>
                                   </p>
                                   <p className="welcome-help-text mt-1">
-                                    Сначала ожидание правил, затем задержка из блока ниже (если включена).
+                                    Подождать, пока участник примет показ правил
                                   </p>
                                 </div>
                               </div>
@@ -7506,7 +7505,7 @@ export function DashboardGuildPageClient({
                                     Задержка присвоения роли
                                   </p>
                                   <p className="welcome-help-text mt-1">
-                                    Применяется ко всем выбранным ролям участника.
+                                    Роль назначится спустя указанное время
                                   </p>
                                 </div>
                               </div>
@@ -7547,9 +7546,14 @@ export function DashboardGuildPageClient({
                             <div className="flex min-w-0 flex-1 items-start gap-3">
                               <Bot className="mt-0.5 h-5 w-5 shrink-0 text-zinc-400" aria-hidden />
                               <div className="min-w-0">
-                                <p className="ds-kicker">Роли для ботов</p>
+                                <p className="ds-kicker inline-flex items-center gap-1.5">
+                                  <span>Авто-роли для ботов</span>
+                                  <span className="inline-flex translate-y-[0.5px] items-center rounded-[6px] border border-[#5865F2]/85 bg-[#5865F2] px-1.5 py-[1px] text-[9px] font-bold uppercase tracking-[0.06em] text-white">
+                                    APP
+                                  </span>
+                                </p>
                                 <p className="welcome-help-text mt-1 max-w-prose">
-                                  Отдельные правила для ботов, добавляемых на сервер.
+                                  Включить выдачу ролей для ботов
                                 </p>
                               </div>
                             </div>
@@ -7562,8 +7566,8 @@ export function DashboardGuildPageClient({
                                   setBotDelayEnabled(false);
                                 }
                               }}
-                              aria-label="Назначать роли для ботов"
-                              title="Назначать роли для ботов"
+                              aria-label="Включить выдачу ролей для ботов"
+                              title="Включить выдачу ролей для ботов"
                             />
                           </div>
 
@@ -7581,11 +7585,10 @@ export function DashboardGuildPageClient({
                                   <Layers className="mt-0.5 h-5 w-5 shrink-0 text-zinc-400" aria-hidden />
                                   <div className="min-w-0">
                                     <p className="text-[13px] font-medium text-zinc-100">
-                                      Присвоить ботам другие роли
+                                      Кастомные роли для ботов
                                     </p>
                                     <p className="welcome-help-text mt-1">
-                                      Если выключено, боты получают тот же набор, что и обычные
-                                      участники.
+                                      Вместо общих ролей боты получат другие роли
                                     </p>
                                   </div>
                                 </div>
@@ -7693,10 +7696,10 @@ export function DashboardGuildPageClient({
                                   />
                                   <div className="min-w-0">
                                     <p className="text-[13px] font-medium leading-snug text-zinc-100">
-                                      Задержка присвоения роли для ботов
+                                      Задержка присвоения роли
                                     </p>
                                     <p className="welcome-help-text mt-1">
-                                      Применяется ко всем ролям бота из текущего набора.
+                                      Роль назначится спустя указанное время
                                     </p>
                                   </div>
                                 </div>
