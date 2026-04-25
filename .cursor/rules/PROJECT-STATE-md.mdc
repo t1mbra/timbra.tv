@@ -1,13 +1,13 @@
 ---
+description: Keep the root PROJECT_STATE.md up to date
 alwaysApply: true
 ---
 
-After any significant implementation change, update PROJECT_STATE.md.
+After any significant implementation change, update the root PROJECT_STATE.md.
 
 Rules:
-- Be precise
-- Do not invent features
-- Reflect only what is actually implemented
-- Update routes, API routes, working features, persistence, known problems, and next step
-- Before editing, inspect the current codebase
-- Before large edits, read PROJECT_STATE.md. After large edits, update PROJECT_STATE.md
+- The single source of truth is `/PROJECT_STATE.md` in the repository root.
+- Do not create or update secondary `PROJECT_STATE.md` files in subfolders.
+- If released baseline, current priorities, roadmap order, or mainline branch reality changed, update `ROADMAP.md` too.
+- Before marking a task complete, explicitly state whether `PROJECT_STATE.md` and `ROADMAP.md` were updated or intentionally left unchanged.
+- Be precise.
